@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "leokani-g2p"
+version = "1.0.0"
+description = "English text to Kokoro-style phonemes, without espeak-ng."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT AND CC-BY-4.0"
+license-files = ["LICENSE", "LICENSE-CC-BY-4.0.txt", "NOTICE"]
+authors = [{ name = "Milliwatt Labs" }]
+keywords = ["g2p", "phonemizer", "text-to-speech", "tts", "kokoro", "espeak-ng", "ipa"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Natural Language :: English",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+    "Topic :: Text Processing :: Linguistic",
+]
+dependencies = ["numpy", "onnxruntime"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/Milliwatt-Labs/leokani-g2p"
+"Hugging Face" = "https://huggingface.co/milliwattlabs/leokani-g2p"
+"Leokani-tts" = "https://huggingface.co/milliwattlabs/leokani-tts-7M"
+
+[project.scripts]
+leokani-g2p = "leokani_g2p.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+leokani_g2p = ["*.onnx", "*.json.gz"]
