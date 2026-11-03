@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "leokani-g2p"
-version = "1.0.0"
-description = "English text to Kokoro-style phonemes, without espeak-ng."
+version = "1.2.0"
+description = "English text to espeak compatible phoneme codes, made from the ground up."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT AND CC-BY-4.0"
@@ -35,4 +35,4 @@ leokani-g2p = "leokani_g2p.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-leokani_g2p = ["*.onnx", "*.json.gz"]
+leokani_g2p = ["*.onnx", "*.json.gz", "mini/*.onnx", "mini/*.json.gz"]

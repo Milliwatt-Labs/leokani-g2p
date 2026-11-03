@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Leokani G2P</title>
+<!-- Served from the package folder (npx serve . or any static server), the import map finds onnxruntime-web.
+     With a bundler, drop the import map and import 'leokani-g2p'. -->
+<script type="importmap">
+{ "imports": { "onnxruntime-web/wasm": "../../node_modules/onnxruntime-web/dist/ort.wasm.bundle.min.mjs" } }
+</script>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
+  textarea { width: 100%; font: inherit; }
+  output { display: block; margin-top: 1rem; white-space: pre-wrap; font-family: ui-monospace, monospace; }
+</style>
+<textarea id="text" rows="3">Dr. Okafor lands at 7:45 AM.</textarea>
+<button id="go" disabled>Phonemize</button>
+<output id="out"></output>
+<script type="module">
+  import { load } from '../../src/index.mjs';
+  const $ = (id) => document.getElementById(id);
+  const g2p = await load();
+  $('go').disabled = false;
+  $('go').onclick = async () => { $('out').textContent = (await g2p.phonemizeChunks($('text').value)).join('\n'); };
+</script>

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "leokani-g2p-user-lexicon",
+  "title": "Leokani G2P custom pronunciations (user lexicon), v1.1",
+  "description": "Shared by every port (Python, C, JS/WASM, Swift). Semantics, identical in every port: (1) APPLIED BEFORE LOOKUP, in the normaliser's per-token step, before any normaliser rule: the token is split into lead/core/trail exactly as Normalizer.split does, and only the core is matched; lead and trail punctuation are kept. (2) CASE: a key with no uppercase letter matches the core in any casing; a key with an uppercase letter matches only that exact casing. An exact-case key wins over a lowercase key. (3) POSSESSIVE: if no entry matches the core and the core ends in 's or ’s (or s' / s’), the stem (without 's, or without the final apostrophe) is matched; a phoneme entry then gets the suffix appended (stem ends, ignoring ˈ ˌ, in s z ʃ ʒ ʧ ʤ -> ᵻz; in p t k f θ -> s; else z; a plural possessive s' / s’ adds nothing), a respelling entry gets 's appended to its last word. (4) A PHONEME entry becomes the word's base (as SAY_AS does: core + U+E000 + phonemes), so the context model still places it in the clause; its phonemes must use only the release's symbols (outSymbols, ˈ, ˌ, and space between parts). (5) A RESPELLING entry replaces the core with the respelling's words, which then go through the normaliser, lexicon and letter-to-sound model as written text. (6) Keys are single tokens: no whitespace; letters, digits, apostrophes, hyphens and periods allowed. Later entries replace earlier ones with the same key. An empty user lexicon changes nothing: goldens.json still reproduces exactly. Loaders: JSON (this schema) and TSV (one entry per line: key TAB value; a value written /like this/ is phonemes, otherwise a respelling; blank lines and lines starting with # are skipped). In JSON, a bare string value follows the same slash rule; an object value names its kind explicitly.",
+  "type": "object",
+  "required": ["format", "words"],
+  "properties": {
+    "format": {"const": "leokani-g2p-user/1"},
+    "words": {
+      "type": "object",
+      "propertyNames": {"pattern": "^[^\\s]+$"},
+      "additionalProperties": {
+        "oneOf": [
+          {"type": "string", "description": "/phonemes/ (slashes) or a respelling", "minLength": 1},
+          {"type": "object", "required": ["phonemes"], "properties": {"phonemes": {"type": "string", "minLength": 1}}, "additionalProperties": false},
+          {"type": "object", "required": ["say"], "properties": {"say": {"type": "string", "minLength": 1}}, "additionalProperties": false}
+        ]
+      }
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {"format": "leokani-g2p-user/1", "words": {"Leokani": "/lˌAOkˈɑni/", "Siobhan": "shivawn", "BBC": {"say": "B B C"}, "gif": {"phonemes": "ʤˈɪf"}}}
+  ]
+}

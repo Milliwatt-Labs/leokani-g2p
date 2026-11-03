@@ -3,9 +3,9 @@
 # Leokani G2P by Milliwatt Labs (milliwattlabs.com)
 """Leokani G2P: English text to Kokoro-style phonemes, without espeak-ng.
 
-One clause ("piece": words with no punctuation between them) in, the phoneme string Leokani was trained on out,
-with stress marks. It produces espeak-ng-compatible phonemes (the same Kokoro/misaki-style codes Leokani-tts and
-Kokoro use). Our own code and models, built from scratch; contains no espeak-ng code or data files.
+One clause ("piece": words with no punctuation between them) in, the phoneme string Leokani-tts reads out, with
+stress marks. It produces espeak compatible phoneme codes, made from the ground up: the same Kokoro/misaki-style
+codes Leokani-tts and Kokoro use. It contains no espeak-ng code or data files.
 
     python leokani_g2p.py "the wind was cold"          # one piece -> phonemes
     python leokani_g2p.py --text "Hello there, Sam."    # a whole line (pieces + punctuation), as leokani.py does
@@ -38,6 +38,18 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FORMAT = "leokani-g2p/1"
+# Model variants by name: the folder relative to the release folder. micro (2.2 M letter-to-sound parameters) is
+# the default and sits at the top; mini (2.9 M, better on unknown words and names) is in mini/.
+VARIANTS = {"micro": "", "mini": "mini"}
+DEFAULT_VARIANT = "micro"
+
+
+def variant_dir(directory: str = HERE, variant: str | None = None) -> str:
+    """The folder holding VARIANT's model files under a release folder (variant None or "micro": the folder)."""
+    v = variant or DEFAULT_VARIANT
+    if v not in VARIANTS:
+        raise ValueError(f"unknown Leokani G2P variant {v!r} (have {', '.join(VARIANTS)})")
+    return os.path.join(directory, VARIANTS[v]) if VARIANTS[v] else directory
 
 PRIMARY, SECONDARY = "ˈ", "ˌ"
 VOWELS = set("aeiouæɑɐɒɔəɛɜɪʊʌAEIOUWYᵊᵻɚɝ")
@@ -51,7 +63,7 @@ SRC = ("lexicon", "oov", "number", "symbol", "empty")
 SHAPES = ("lower", "title", "caps", "mixed", "digit", "other")
 
 
-# ---------------------------------------------------------------- edits shared with training
+# ---------------------------------------------------------------- stress and phoneme edits
 
 def stress_op(b: str, op: str) -> str:
     if op == "same":
@@ -561,7 +573,8 @@ REGNAL = {"henry", "elizabeth", "louis", "george", "edward", "charles", "james",
 ROMAN_CUE = {"war", "chapter", "part", "volume", "vol", "act", "book", "phase", "type", "class", "level", "section",
              "article", "title", "grade", "stage", "episode", "season", "bowl", "apollo", "gemini", "mark", "mk",
              "series", "round", "tier", "category", "schedule", "appendix", "unit", "rule", "step", "psalm", "canto",
-             "scene", "game", "olympiad", "vatican", "council", "amendment", "division", "corps", "fleet", "army"}
+             "scene", "game", "olympiad", "vatican", "council", "amendment", "division", "corps", "fleet", "army",
+             "clause", "paragraph", "tome", "symphony", "lesson", "module", "track", "mission", "operation"}
 ROMAN_AMBIGUOUS = {"IV", "XL", "LV", "LX", "XX", "XXX", "VL", "IL", "LI", "MIX", "DIV", "CIV", "VI", "XI", "IX", "CI",
                    "CL", "CV", "DC", "CD", "MD", "MC", "MCC", "LXX", "XXL", "XXXL"}
 ROMAN = re.compile(r"^(?=[IVXLCDM])M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$")
@@ -581,7 +594,8 @@ SAY_AS = {"haumea": "hWmˈAə", "leokani": "lˌAOkˈɑni", "mahalo": "məhˈɑlO
 SAY_AS_CASED = {"LaTeX": "lˈAtɛk", "iOS": "ˌIˌOˈɛs", "macOS": "mˌækˌOˈɛs", "watchOS": "wˌɑʧˌOˈɛs",
                 "tvOS": "tˌivˌiˌOˈɛs", "iPadOS": "ˈIpˌædˌOˈɛs", "Wi-Fi": "wˈIfˌI", "WiFi": "wˈIfˌI",
                 "SQL": "sˈikwᵊl", "RAM": "ɹˈæm", "ETA": "ˌiˌtiˈA", "YoY": "jˈɪɹ ˌOvəɹ jˈɪɹ", "IKEA": "Ikˈiə",
-                "MacBook": "mˈækbʊk"}
+                "MacBook": "mˈækbʊk", "FEMA": "fˈimə", "ZIP": "zˈɪp",
+                "eSIM": "ˈi sˈɪm", "eSIMs": "ˈi sˈɪmz"}
 # heteronyms the context model takes the wrong way after these words
 VERB_BEFORE = {"to", "will", "would", "can", "could", "should", "must", "may", "might", "please", "we", "i", "eye",
                "they", "you", "don't", "didn't", "won't", "let's", "i'll", "we'll", "they'll", "you'll", "always",
@@ -592,8 +606,776 @@ VERB_FORMS = {"present": "pɹɪzˈɛnt", "convict": "kənvˈɪkt", "subject": "s
 SUBJECTS = {"he", "she", "it", "they", "we", "i", "eye", "you", "who"}
 OBJECTS = {"the", "a", "an", "your", "my", "our", "his", "her", "their", "its", "it", "this", "that", "these", "those",
            "them", "him", "me", "us", "up", "down", "all", "everything", "off", "out"}
+# ---- letters and codes (v1.2)
+# capitals respelled as words ("IEEE" -> I triple E); the respelling goes through the normaliser again
+CASED_SAY = {"IEEE": "I triple E", "WWI": "World War one", "WWII": "World War two", "WW1": "World War one",
+             "WW2": "World War two", "PhD": "P H D", "PhDs": "P H Ds",
+             "ZIP+4": "zip plus four", "A-OK": "A O K", "AAA": "triple A", "NAACP": "N double A C P", "NCAA": "N C double A"}
+# a digit run after one of these is a code said digit by digit ("tracking number 9400111899", "code 482913")
+CODE_CUE = {"number", "code", "pin", "passcode", "otp", "account", "tracking", "order", "confirmation",
+            "reference", "ref", "serial", "invoice", "ticket", "sn", "policy", "member", "membership", "case",
+            "claim", "booking", "voucher", "pnr", "id", "acct", "routing", "transaction", "receipt", "badge",
+            "verification", "security", "access", "promo", "coupon", "shipment", "parcel", "package", "#"}
+# an all-caps word the letter-to-sound model doesn't know is said as a word only if English could spell it:
+# a legal onset, vowels, consonant clusters that split into a legal coda and onset, a legal coda
+ONSETS = set("b c d f g h j k l m n p q r s t v w x y z bl br ch cl cr dr dw fl fr gl gn gr kl kn kr ph pl pr ps qu "
+             "sc sch scr sh shr sk sl sm sn sp spl spr squ st str sw th thr tr tw wh wr chr phr sph tw".split()) | {""}
+CODAS = set("b c d f g k l m n p r s t v x z ck ct ft ld lf lk lm lp lt mb mp nd ng nk ns nt nch rb rc rd rf rg rk "
+            "rl rm rn rp rs rt sh sk sp st th tch ts ds ks ps ch ght gh ll ss ff zz rth rst nds nts mps rks lls ch "
+            "rch lch nce rse lse wn wl wk ws wd y w h".split()) | {""}
+# words that start a sentence after a single letter and a full stop ("Plan A. Then we ..."), not a name after an initial
+SENTENCE_START = set("the then we i it he she they this that a an and but so now there you my our in on at if when after "
+                     "before what why how next first finally also please".split())
+# letters said in the plural: the sibilant letters take "-es"
+LETTER_PLURAL_ES = set("sxhz")
+LETTER_PLURAL_S = set("f")
+
+
+def pronounceable(w: str) -> bool:
+    """Could an English reader say this all-letter run as a word ("BLORB" yes, "AGC" or "QRT" no)?"""
+    w = w.lower()
+    if not w.isascii() or not w.isalpha():
+        return False
+    if len(w) <= 3:                                          # short ones only as one closed syllable ("HUD")
+        return bool(re.match(r"^[bcdfghjklmnpqrstvwxz]?[aeiou][bcdfgklmnprstvxz]?$", w))
+    # vowel groups; a "y" before a vowel or at the start is a consonant
+    groups = re.findall(r"[aeiou]+|(?<=[^aeiou])y(?![aeiou])|[^aeiou]", w)
+    vowel = lambda g: g[0] in "aeiou" or g == "y"  # noqa: E731
+    merged: list[str] = []
+    for g in groups:
+        if merged and not vowel(g) and not vowel(merged[-1]):
+            merged[-1] += g
+        else:
+            merged.append(g)
+    vows = [g for g in merged if vowel(g)]
+    if not vows or any(len(v) > 2 for v in vows):
+        return False
+    for k, g in enumerate(merged):
+        if vowel(g):
+            continue
+        if k == 0:
+            if g not in ONSETS:
+                return False
+        elif k == len(merged) - 1:
+            if g not in CODAS:
+                return False
+        elif not any(g[:j] in CODAS and g[j:] in ONSETS for j in range(len(g) + 1)) or len(g) > 4:
+            return False
+    return True
+
+
+# ---- homographs (v1.2). HOMOGRAPHS[word] = [(phonemes, tests), ...]: the first rule whose tests all hold says the
+# word with those phonemes ("" = leave it to the context model). A test is FIELD OP VALUES: FIELD p1 p2 p3 (the words
+# before, "^" past the clause start), n1 n2 n3 (after, "$" past its end), P / N (any of p1-p3 / n1-n3); OP "=" (one
+# of), "!=" (none of), "~" (ends with one of), "!~" (ends with none of); VALUES "|"-separated words, "@NAME" a HG_CLASSES set. "cap": the
+# word is capitalised and not clause-initial. Context words are lowercase without surrounding punctuation.
+HG_STOP = set(".,!?;:…—–")
+HG_CLASSES = {
+    "DET": "the a an this that these those my your his her its our their no any some every each another which what "
+           "whose one two three several many few more most such either neither",
+    "MODAL": "will would can could should must may might shall can't won't wouldn't couldn't shouldn't cannot "
+             "i'll you'll we'll they'll he'll she'll it'll i'd you'd we'd they'd he'd she'd",
+    "DO": "do does did don't doesn't didn't",
+    "SUBJ": "i you we they he she who eye",
+    "BE": "am is are was were be been being isn't aren't wasn't weren't it's that's there's he's she's what's",
+    "HAVE": "have has had having haven't hasn't hadn't i've you've we've they've",
+    "PREP": "of in on at for with from by into onto about under over through after before during without against "
+            "between among near behind across around toward towards upon within like",
+    "ADV": "not never also always often still just really usually already even soon then now quickly carefully "
+           "rarely sometimes probably finally actually",
+    "OBJ": "the a an your my our his her their its it this that these those them him me us you everything "
+           "something anything everyone someone some all both",
+    # a determiner before a noun; the ones that also start a noun phrase after a verb
+    "DETN": "the a an my your his her its our their this these those no any some every each another which whose "
+            "several many few most such what",
+    "DETX": "the a an your my our his their its this these those",
+    "SUBJX": "i you we they he she who anyone everyone someone nobody people",
+    # what follows an imperative verb at the start of a clause
+    "IMPN": "the a an your my our his her their its it this that these those them him me us everything "
+            "something all both between along into out up with off from across through over around down",
+    # words ending in -s that aren't a plural subject
+    "NOTPL": "this his is was has does as us plus thus less always perhaps sometimes its yes lots whereas "
+             "afterwards besides towards upwards news means series species politics physics",
+}
+# HOMOGRAPHS-BEGIN (generated by g2p_hgtable.py; edit the templates there, not this block)
+HOMOGRAPHS: dict[str, list[tuple[str, list[str]]]] = {
+    'address': [
+        ('', ["p1=^", "N=address|addresss"]),
+        ('', ["p2=address|addresss", "p3=^"]),
+        ('ˈædɹɛs', ["p1=@DETN", "n1!=@DETX"]),
+        ('ədɹˈɛs', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ədɹˈɛs', ["p1=@SUBJX"]),
+        ('ədɹˈɛs', ["p1=^|please", "n1=@IMPN"]),
+        ('ədɹˈɛs', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ədɹˈɛs', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ədɹˈɛs', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('ədɹˈɛs', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'aged': [
+        ('ˈAʤᵻd', ["p1=the|an|@DETN", "n1=and|or|$|who|are|were|people|parents|mother|father|man|woman|couple|relatives|population|care|home|homes|patients|grandmother|grandfather|relative"]),
+    ],
+    'alternate': [
+        ('ɔltˈɜɹnət', ["p1=@DETN", "n1!=@DETX"]),
+        ('ɔltˈɜɹnət', ["p1=@BE|very|more|most|less|quite|so|too|perfectly|entirely|completely|fully|highly|rather|not|seem|seems|seemed|look|looks|looked|feel|feels|felt|become|became"]),
+        ('ˈɔltəɹnˌAt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ˈɔltəɹnˌAt', ["p1=@SUBJX"]),
+        ('ˈɔltəɹnˌAt', ["p1=^|please", "n1=@IMPN"]),
+        ('ˈɔltəɹnˌAt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ˈɔltəɹnˌAt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ˈɔltəɹnˌAt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+    ],
+    'appropriate': [
+        ('əpɹˈOpɹɪjət', ["p1=@DETN", "n1!=@DETX"]),
+        ('əpɹˈOpɹɪjət', ["p1=@BE|very|more|most|less|quite|so|too|perfectly|entirely|completely|fully|highly|rather|not|seem|seems|seemed|look|looks|looked|feel|feels|felt|become|became"]),
+        ('əpɹˈOpɹɪˌAt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('əpɹˈOpɹɪˌAt', ["p1=@SUBJX"]),
+        ('əpɹˈOpɹɪˌAt', ["p1=^|please", "n1=@IMPN"]),
+        ('əpɹˈOpɹɪˌAt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('əpɹˈOpɹɪˌAt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('əpɹˈOpɹɪˌAt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+    ],
+    'associate': [
+        ('', ["p1=^", "N=associate|associates"]),
+        ('', ["p2=associate|associates", "p3=^"]),
+        ('əsˈOsiət', ["p1=@DETN", "n1!=@DETX"]),
+        ('əsˈOsɪˌAt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('əsˈOsɪˌAt', ["p1=@SUBJX"]),
+        ('əsˈOsɪˌAt', ["p1=^|please", "n1=@IMPN"]),
+        ('əsˈOsɪˌAt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('əsˈOsɪˌAt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('əsˈOsɪˌAt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('əsˈOsɪˌAt', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'attribute': [
+        ('', ["p1=^", "N=attribute|attributes"]),
+        ('', ["p2=attribute|attributes", "p3=^"]),
+        ('ˈætɹɪbjˌut', ["p1=@DETN", "n1!=@DETX"]),
+        ('ətɹˈɪbjut', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ətɹˈɪbjut', ["p1=@SUBJX"]),
+        ('ətɹˈɪbjut', ["p1=^|please", "n1=@IMPN"]),
+        ('ətɹˈɪbjut', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ətɹˈɪbjut', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ətɹˈɪbjut', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('ətɹˈɪbjut', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'axes': [
+        ('ˈæksiz', ["P=graph|graphs|chart|plot|logarithmic|coordinate|coordinates|both|x|y|z|horizontal|vertical|principal|rotation|label|labels|labeled|scale|scales|grid|symmetry|cartesian|plotted|axis|figure|three|two"]),
+        ('ˈæksiz', ["N=graph|graphs|chart|plot|labeled|symmetry|rotation|grid|x|y|z"]),
+    ],
+    'bases': [
+        ('bˈAsiz', ["n1=for"]),
+        ('bˈAsiz', ["P=no|legal|theoretical|factual|scientific|moral|ethical|constitutional|statutory|logical|empirical|valid|solid|sound|possible|several|multiple|various"]),
+    ],
+    'blessed': [
+        ('blˈɛsᵻd', ["p1=every|a|this|that|the|most|thrice|holy|ever|our|your|his|her|my|truly|so|such", "n1!=with|by|to|$|and"]),
+    ],
+    'bow': [
+        ('bˈW', ["n1=of", "N=ship|boat|vessel|yacht|canoe|ferry|tanker|liner|kayak|freighter|ships|boats"]),
+        ('bˈO', ["P=rosined|rosin|violin|cello|viola|fiddle|arrow|arrows|archer|archery|ribbon|tied|tie|pink|red|silk|velvet|hair|bright|cross"]),
+        ('bˈW', ["p1=@SUBJX|@MODAL|to|and|then|please|^", "n1=to|down|before|deeply|low|his|her|their|our|in|politely|slightly|respectfully|out"]),
+    ],
+    'bows': [
+        ('bˈWz', ["p1!=@DETN", "n1=his|her|their|to|down|before|deeply|low|politely|slightly|respectfully|out|in"]),
+    ],
+    'buffet': [
+        ('bˈʌfɪt', ["p1!=@DETN", "n1=@OBJ"]),
+        ('bəfˈA', ["P=@DETN|chinese|breakfast|lunch|dinner|salad|seafood|dessert|hotel|brunch|cold|hot|all-you-can-eat|indian|italian"]),
+    ],
+    'compound': [
+        ('', ["p1=^", "N=compound|compounds"]),
+        ('', ["p2=compound|compounds", "p3=^"]),
+        ('kˈɑmpWnd', ["p1=@DETN", "n1!=@DETX"]),
+        ('kɑmpˈWnd', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('kɑmpˈWnd', ["p1=@SUBJX"]),
+        ('kɑmpˈWnd', ["p1=^|please", "n1=@IMPN"]),
+        ('kɑmpˈWnd', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('kɑmpˈWnd', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('kɑmpˈWnd', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('kɑmpˈWnd', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'conduct': [
+        ('', ["p1=^", "N=conduct|conducts"]),
+        ('', ["p2=conduct|conducts", "p3=^"]),
+        ('kˈɑndʌkt', ["p1=@DETN", "n1!=@DETX"]),
+        ('kəndˈʌkt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('kəndˈʌkt', ["p1=@SUBJX"]),
+        ('kəndˈʌkt', ["p1=^|please", "n1=@IMPN"]),
+        ('kəndˈʌkt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('kəndˈʌkt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('kəndˈʌkt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('kəndˈʌkt', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'conflict': [
+        ('', ["p1=^", "N=conflict|conflicts"]),
+        ('', ["p2=conflict|conflicts", "p3=^"]),
+        ('kˈɑnflɪkt', ["p1=@DETN", "n1!=@DETX"]),
+        ('kənflˈɪkt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('kənflˈɪkt', ["p1=@SUBJX"]),
+        ('kənflˈɪkt', ["p1=^|please", "n1=@IMPN"]),
+        ('kənflˈɪkt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('kənflˈɪkt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('kənflˈɪkt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('kənflˈɪkt', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'console': [
+        ('', ["p1=^", "N=console|consoles"]),
+        ('', ["p2=console|consoles", "p3=^"]),
+        ('kˈɑnsOl', ["p1=@DETN", "n1!=@DETX"]),
+        ('kənsˈOl', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('kənsˈOl', ["p1=@SUBJX"]),
+        ('kənsˈOl', ["p1=^|please", "n1=@IMPN"]),
+        ('kənsˈOl', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('kənsˈOl', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('kənsˈOl', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('kənsˈOl', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'contract': [
+        ('', ["p1=^", "N=contract|contracts"]),
+        ('', ["p2=contract|contracts", "p3=^"]),
+        ('kˈɑntɹækt', ["p1=@DETN", "n1!=@DETX"]),
+        ('kəntɹˈækt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('kəntɹˈækt', ["p1=@SUBJX"]),
+        ('kəntɹˈækt', ["p1=^|please", "n1=@IMPN"]),
+        ('kəntɹˈækt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('kəntɹˈækt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('kəntɹˈækt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('kəntɹˈækt', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'convict': [
+        ('', ["p1=^", "N=convict|convicts"]),
+        ('', ["p2=convict|convicts", "p3=^"]),
+        ('kˈɑnvɪkt', ["p1=@DETN", "n1!=@DETX"]),
+        ('kənvˈɪkt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('kənvˈɪkt', ["p1=@SUBJX"]),
+        ('kənvˈɪkt', ["p1=^|please", "n1=@IMPN"]),
+        ('kənvˈɪkt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('kənvˈɪkt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('kənvˈɪkt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('kənvˈɪkt', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'deliberate': [
+        ('dᵻlˈɪbəɹɹət', ["p1=@DETN", "n1!=@DETX"]),
+        ('dᵻlˈɪbəɹɹət', ["p1=@BE|very|more|most|less|quite|so|too|perfectly|entirely|completely|fully|highly|rather|not|seem|seems|seemed|look|looks|looked|feel|feels|felt|become|became"]),
+        ('dᵻlˈɪbəɹɹˌAt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('dᵻlˈɪbəɹɹˌAt', ["p1=@SUBJX"]),
+        ('dᵻlˈɪbəɹɹˌAt', ["p1=^|please", "n1=@IMPN"]),
+        ('dᵻlˈɪbəɹɹˌAt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('dᵻlˈɪbəɹɹˌAt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('dᵻlˈɪbəɹɹˌAt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+    ],
+    'desert': [
+        ('', ["p1=^", "N=desert|deserts"]),
+        ('', ["p2=desert|deserts", "p3=^"]),
+        ('dˈɛzəɹt', ["p1=@DETN", "n1!=@DETX"]),
+        ('dᵻzˈɜɹt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('dᵻzˈɜɹt', ["p1=@SUBJX"]),
+        ('dᵻzˈɜɹt', ["p1=^|please", "n1=@IMPN"]),
+        ('dᵻzˈɜɹt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('dᵻzˈɜɹt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('dᵻzˈɜɹt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('dᵻzˈɜɹt', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'digest': [
+        ('dˈIʤɛst', ["cap"]),
+        ('dˈIʤɛst', ["p1=weekly|daily|monthly|news|email|reader's"]),
+        ('', ["p1=^", "N=digest|digests"]),
+        ('', ["p2=digest|digests", "p3=^"]),
+        ('dˈIʤɛst', ["p1=@DETN", "n1!=@DETX"]),
+        ('dIʤˈɛst', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('dIʤˈɛst', ["p1=@SUBJX"]),
+        ('dIʤˈɛst', ["p1=^|please", "n1=@IMPN"]),
+        ('dIʤˈɛst', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('dIʤˈɛst', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('dIʤˈɛst', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('dIʤˈɛst', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'does': [
+        ('dˈOz', ["p1=take|hunt|hunting|shoot|shot|killed|only|bucks|young|female|wild|pregnant|two|three|several|many|the|some", "n1=in|and|or|$|were|are|grazed|graze|grazing|at|from|during|with|on|that|which"]),
+    ],
+    'dove': [
+        ('dˈʌv', ["p1=@DETN|white|mourning|peace|turtle|rock"]),
+        ('dˈOv', ["n1=after|into|in|under|off|for|down|through|onto|deep|headfirst|back|to|from|nearly|sharply|below|toward|towards|behind|out|overboard|percent"]),
+    ],
+    'entrance': [
+        ('', ["p1=^", "N=entrance|entrances"]),
+        ('', ["p2=entrance|entrances", "p3=^"]),
+        ('ˈɛntɹəns', ["p1=@DETN", "n1!=@DETX"]),
+        ('ɛntɹˈæns', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ɛntɹˈæns', ["p1=@SUBJX"]),
+        ('ɛntɹˈæns', ["p1=^|please", "n1=@IMPN"]),
+        ('ɛntɹˈæns', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ɛntɹˈæns', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ɛntɹˈæns', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('ɛntɹˈæns', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'estimate': [
+        ('', ["p1=^", "N=estimate|estimates"]),
+        ('', ["p2=estimate|estimates", "p3=^"]),
+        ('ˈɛstᵻmət', ["p1=@DETN", "n1!=@DETX"]),
+        ('ˈɛstᵻmˌAt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ˈɛstᵻmˌAt', ["p1=@SUBJX"]),
+        ('ˈɛstᵻmˌAt', ["p1=^|please", "n1=@IMPN"]),
+        ('ˈɛstᵻmˌAt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ˈɛstᵻmˌAt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ˈɛstᵻmˌAt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('ˈɛstᵻmˌAt', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'excuse': [
+        ('', ["n1=me|us"]),
+        ('', ["p1=^", "N=excuse|excuses"]),
+        ('', ["p2=excuse|excuses", "p3=^"]),
+        ('ɛkskjˈus', ["p1=@DETN", "n1!=@DETX"]),
+        ('ɛkskjˈuz', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ɛkskjˈuz', ["p1=@SUBJX"]),
+        ('ɛkskjˈuz', ["p1=^|please", "n1=@IMPN"]),
+        ('ɛkskjˈuz', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ɛkskjˈuz', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ɛkskjˈuz', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('ɛkskjˈuz', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'graduate': [
+        ('', ["p1=^", "N=graduate|graduates"]),
+        ('', ["p2=graduate|graduates", "p3=^"]),
+        ('ɡɹˈæʤuət', ["p1=@DETN", "n1!=@DETX"]),
+        ('ɡɹˈæʤuˌAt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ɡɹˈæʤuˌAt', ["p1=@SUBJX"]),
+        ('ɡɹˈæʤuˌAt', ["p1=^|please", "n1=@IMPN"]),
+        ('ɡɹˈæʤuˌAt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ɡɹˈæʤuˌAt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ɡɹˈæʤuˌAt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('ɡɹˈæʤuˌAt', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'house': [
+        ('', ["p1=^", "N=house|houses"]),
+        ('', ["p2=house|houses", "p3=^"]),
+        ('hˈWs', ["p1=@DETN", "n1!=@DETX"]),
+        ('hˈWz', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('hˈWz', ["p1=@SUBJX"]),
+        ('hˈWz', ["p1=^|please", "n1=@IMPN"]),
+        ('hˈWz', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('hˈWz', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('hˈWz', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('hˈWz', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'incense': [
+        ('', ["p1=^", "N=incense|incenses"]),
+        ('', ["p2=incense|incenses", "p3=^"]),
+        ('ˈɪnsɛns', ["p1=@DETN", "n1!=@DETX"]),
+        ('ɪnsˈɛns', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ɪnsˈɛns', ["p1=@SUBJX"]),
+        ('ɪnsˈɛns', ["p1=^|please", "n1=@IMPN"]),
+        ('ɪnsˈɛns', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ɪnsˈɛns', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ɪnsˈɛns', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('ɪnsˈɛns', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'increase': [
+        ('', ["p1=^", "N=increase|increases"]),
+        ('', ["p2=increase|increases", "p3=^"]),
+        ('ˈɪŋkɹis', ["p1=@DETN", "n1!=@DETX"]),
+        ('ɪŋkɹˈis', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ɪŋkɹˈis', ["p1=@SUBJX"]),
+        ('ɪŋkɹˈis', ["p1=^|please", "n1=@IMPN"]),
+        ('ɪŋkɹˈis', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ɪŋkɹˈis', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ɪŋkɹˈis', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('ɪŋkɹˈis', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'insert': [
+        ('', ["p1=^", "N=insert|inserts"]),
+        ('', ["p2=insert|inserts", "p3=^"]),
+        ('ˈɪnsɜɹt', ["p1=@DETN", "n1!=@DETX"]),
+        ('ɪnsˈɜɹt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ɪnsˈɜɹt', ["p1=@SUBJX"]),
+        ('ɪnsˈɜɹt', ["p1=^|please", "n1=@IMPN"]),
+        ('ɪnsˈɜɹt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ɪnsˈɜɹt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ɪnsˈɜɹt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('ɪnsˈɜɹt', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'invalid': [
+        ('ˈɪnvəlɪd', ["p1=an|the|as", "n1=$|who|and|for|in|at|with"]),
+    ],
+    'lead': [
+        ('lˈɛd', ["p1=pencil|graphite|mechanical|soft|hard|sharpened|sharp|toxic|molten|white|red"]),
+        ('lˈɛd', ["n1=pipes|pipe|paint|poisoning|levels|contamination|exposure|bullet|bullets|shot|weight|weights|crystal|solder|acetate|oxide|apron|shielding|ore|mine|mines|pencil|pencils|piping|sinker|sinkers|balloon"]),
+    ],
+    'learned': [
+        ('lˈɜɹnᵻd', ["p1=@DETN", "n1!=@DETX|to|from|that|how|about"]),
+    ],
+    'live': [
+        ('lˈIv', ["n1=music|broadcast|broadcasts|show|shows|concert|concerts|wire|wires|audience|stream|streams|streaming|performance|performances|television|tv|coverage|event|events|bait|ammunition|rounds|feed|version|album|recording|recordings|action|animals|oak|chat|demo|video|videos|update|updates|band|bands|theater|theatre|sports|footage|cattle|webinar|session|sessions|blog|vote|grenade|round|wire's|q&a"]),
+        ('lˈIv', ["p1=still|go|goes|went|going|gone|be|is|was|are|were|being|it's|now", "n1=$|on|from|at|tonight|now|in|with|and|right|today|this|across|for"]),
+    ],
+    'moderate': [
+        ('mˈɑdəɹɹət', ["p1=@DETN", "n1!=@DETX"]),
+        ('mˈɑdəɹɹət', ["p1=@BE|very|more|most|less|quite|so|too|perfectly|entirely|completely|fully|highly|rather|not|seem|seems|seemed|look|looks|looked|feel|feels|felt|become|became"]),
+        ('mˈɑdəɹɹˌAt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('mˈɑdəɹɹˌAt', ["p1=@SUBJX"]),
+        ('mˈɑdəɹɹˌAt', ["p1=^|please", "n1=@IMPN"]),
+        ('mˈɑdəɹɹˌAt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('mˈɑdəɹɹˌAt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('mˈɑdəɹɹˌAt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+    ],
+    'number': [
+        ('nˈʌməɹ', ["n1=$|than|and", "P=feel|felt|feels|feeling|grew|growing|getting|became|become|went|gone|seemed|seems|looked"]),
+    ],
+    'object': [
+        ('', ["p1=^", "N=object|objects"]),
+        ('', ["p2=object|objects", "p3=^"]),
+        ('ˈɑbʤɛkt', ["p1=@DETN", "n1!=@DETX"]),
+        ('ɑbʤˈɛkt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ɑbʤˈɛkt', ["p1=@SUBJX"]),
+        ('ɑbʤˈɛkt', ["p1=^|please", "n1=@IMPN"]),
+        ('ɑbʤˈɛkt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ɑbʤˈɛkt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ɑbʤˈɛkt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('ɑbʤˈɛkt', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'perfect': [
+        ('pˈɜɹfɛkt', ["p1=@DETN", "n1!=@DETX"]),
+        ('pˈɜɹfɛkt', ["p1=@BE|very|more|most|less|quite|so|too|perfectly|entirely|completely|fully|highly|rather|not|seem|seems|seemed|look|looks|looked|feel|feels|felt|become|became"]),
+        ('pəɹfˈɛkt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('pəɹfˈɛkt', ["p1=@SUBJX"]),
+        ('pəɹfˈɛkt', ["p1=^|please", "n1=@IMPN"]),
+        ('pəɹfˈɛkt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('pəɹfˈɛkt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('pəɹfˈɛkt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+    ],
+    'permit': [
+        ('', ["p1=^", "N=permit|permits"]),
+        ('', ["p2=permit|permits", "p3=^"]),
+        ('pˈɜɹmɪt', ["p1=@DETN", "n1!=@DETX"]),
+        ('pəɹmˈɪt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('pəɹmˈɪt', ["p1=@SUBJX"]),
+        ('pəɹmˈɪt', ["p1=^|please", "n1=@IMPN"]),
+        ('pəɹmˈɪt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('pəɹmˈɪt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('pəɹmˈɪt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('pəɹmˈɪt', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'present': [
+        ('pɹˈɛzənt', ["p1=@DETN", "n1!=@DETX"]),
+        ('pɹˈɛzənt', ["p1=@BE|very|more|most|less|quite|so|too|perfectly|entirely|completely|fully|highly|rather|not|seem|seems|seemed|look|looks|looked|feel|feels|felt|become|became"]),
+        ('pɹɪzˈɛnt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('pɹɪzˈɛnt', ["p1=@SUBJX"]),
+        ('pɹɪzˈɛnt', ["p1=^|please", "n1=@IMPN"]),
+        ('pɹɪzˈɛnt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('pɹɪzˈɛnt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('pɹɪzˈɛnt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+    ],
+    'primer': [
+        ('pɹˈIməɹ', ["P=makeup|paint|painting|paints|foundation|skin|face|wall|walls|wood|metal|coat|coats|apply|applied|applying|spray|priming|eyeshadow|lipstick|sealant|drywall|surface|surfaces|rust|dna|pcr|sequencing|eye|lip|grip"]),
+        ('pɹˈIməɹ', ["N=makeup|paint|painting|foundation|skin|face|wall|walls|wood|metal|coat|coats|dries|dry|spray|sealant|drywall|surface|surfaces|rust|dna|pcr|sequencing|eyeshadow|lipstick|helps|first"]),
+    ],
+    'produce': [
+        ('pɹˈOdus', ["p1=all|fresh|local|organic|farm|seasonal|frozen|canned|wash|washed|our|your"]),
+        ('', ["p1=^", "N=produce|produces"]),
+        ('', ["p2=produce|produces", "p3=^"]),
+        ('pɹˈOdus', ["p1=@DETN", "n1!=@DETX"]),
+        ('pɹədˈus', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('pɹədˈus', ["p1=@SUBJX"]),
+        ('pɹədˈus', ["p1=^|please", "n1=@IMPN"]),
+        ('pɹədˈus', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('pɹədˈus', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('pɹədˈus', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('pɹədˈus', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'progress': [
+        ('', ["p1=^", "N=progress|progresss"]),
+        ('', ["p2=progress|progresss", "p3=^"]),
+        ('pɹˈɑɡɹɛs', ["p1=@DETN", "n1!=@DETX"]),
+        ('pɹəɡɹˈɛs', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('pɹəɡɹˈɛs', ["p1=@SUBJX"]),
+        ('pɹəɡɹˈɛs', ["p1=^|please", "n1=@IMPN"]),
+        ('pɹəɡɹˈɛs', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('pɹəɡɹˈɛs', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('pɹəɡɹˈɛs', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('pɹəɡɹˈɛs', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'project': [
+        ('', ["p1=^", "N=project|projects"]),
+        ('', ["p2=project|projects", "p3=^"]),
+        ('pɹˈɑʤɛkt', ["p1=@DETN", "n1!=@DETX"]),
+        ('pɹəʤˈɛkt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('pɹəʤˈɛkt', ["p1=@SUBJX"]),
+        ('pɹəʤˈɛkt', ["p1=^|please", "n1=@IMPN"]),
+        ('pɹəʤˈɛkt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('pɹəʤˈɛkt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('pɹəʤˈɛkt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('pɹəʤˈɛkt', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'putting': [
+        ('pˈʌɾɪŋ', ["p1=his|her|my|your|their|our|the|whose", "n1!=@OBJ|up|on|off|out|away|down|in|together|back|it|them|forward|aside|through"]),
+    ],
+    'rebel': [
+        ('', ["p1=^", "N=rebel|rebels"]),
+        ('', ["p2=rebel|rebels", "p3=^"]),
+        ('ɹˈɛbᵊl', ["p1=@DETN", "n1!=@DETX"]),
+        ('ɹᵻbˈɛl', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ɹᵻbˈɛl', ["p1=@SUBJX"]),
+        ('ɹᵻbˈɛl', ["p1=^|please", "n1=@IMPN"]),
+        ('ɹᵻbˈɛl', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ɹᵻbˈɛl', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ɹᵻbˈɛl', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('ɹᵻbˈɛl', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'record': [
+        ('', ["p1=^", "N=record|records"]),
+        ('', ["p2=record|records", "p3=^"]),
+        ('ɹˈɛkəɹd', ["p1=@DETN", "n1!=@DETX"]),
+        ('ɹᵻkˈɔɹd', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ɹᵻkˈɔɹd', ["p1=@SUBJX"]),
+        ('ɹᵻkˈɔɹd', ["p1=^|please", "n1=@IMPN"]),
+        ('ɹᵻkˈɔɹd', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ɹᵻkˈɔɹd', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ɹᵻkˈɔɹd', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('ɹᵻkˈɔɹd', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'refuse': [
+        ('ɹˈɛfjus', ["p1=of|household|kitchen|garden|industrial|domestic|municipal|human|toxic", "n1!=to|@OBJ"]),
+        ('ɹˈɛfjus', ["p1=the", "n1!=to|@OBJ|@SUBJX"]),
+        ('', ["p1=^", "N=refuse|refuses"]),
+        ('', ["p2=refuse|refuses", "p3=^"]),
+        ('ɹˈɛfjus', ["p1=@DETN", "n1!=@DETX"]),
+        ('ɹᵻfjˈuz', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('ɹᵻfjˈuz', ["p1=@SUBJX"]),
+        ('ɹᵻfjˈuz', ["p1=^|please", "n1=@IMPN"]),
+        ('ɹᵻfjˈuz', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('ɹᵻfjˈuz', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('ɹᵻfjˈuz', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('ɹᵻfjˈuz', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'resume': [
+        ('ɹˈɛzumˌA', ["p1=@DETN|updated|polished|strong|attach|send|submit|upload|email|new|current|one-page|two-page"]),
+    ],
+    'row': [
+        ('ɹˈW', ["p1=a|the|huge|big|blazing|furious|bitter|public|family|another|political|diplomatic|major|heated|massive", "n1=in|over|about|with|between|erupted|broke|has|had|after|among|within|that"]),
+    ],
+    'résumé': [
+        ('ɹˈɛzumˌA', []),
+    ],
+    'separate': [
+        ('sˈɛpɹət', ["p1=@DETN", "n1!=@DETX"]),
+        ('sˈɛpɹət', ["p1=@BE|very|more|most|less|quite|so|too|perfectly|entirely|completely|fully|highly|rather|not|seem|seems|seemed|look|looks|looked|feel|feels|felt|become|became"]),
+        ('sˈɛpəɹɹˌAt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('sˈɛpəɹɹˌAt', ["p1=@SUBJX"]),
+        ('sˈɛpəɹɹˌAt', ["p1=^|please", "n1=@IMPN"]),
+        ('sˈɛpəɹɹˌAt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('sˈɛpəɹɹˌAt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('sˈɛpəɹɹˌAt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+    ],
+    'sewer': [
+        ('sˈOəɹ', ["P=skilled|talented|expert|experienced|keen|avid|amateur|seamstress"]),
+        ('sˈOəɹ', ["N=quilting|sewing|clothes|fabric|quilts|quilt|dresses|stitch|stitches|thread|needle|patterns|seams|hems"]),
+    ],
+    'sow': [
+        ('sˈW', ["p1=@DETN|prize|pregnant|old|breeding|fat", "n1!=@DETX|seeds|seed|the"]),
+    ],
+    'subject': [
+        ('', ["p1=^", "N=subject|subjects"]),
+        ('', ["p2=subject|subjects", "p3=^"]),
+        ('sˈʌbʤɛkt', ["p1=@DETN", "n1!=@DETX"]),
+        ('səbʤˈɛkt', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('səbʤˈɛkt', ["p1=@SUBJX"]),
+        ('səbʤˈɛkt', ["p1=^|please", "n1=@IMPN"]),
+        ('səbʤˈɛkt', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('səbʤˈɛkt', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('səbʤˈɛkt', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('səbʤˈɛkt', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'survey': [
+        ('', ["p1=^", "N=survey|surveys"]),
+        ('', ["p2=survey|surveys", "p3=^"]),
+        ('sˈɜɹvA', ["p1=@DETN", "n1!=@DETX"]),
+        ('səɹvˈA', ["p1=@MODAL|@DO|to|please|let's|let"]),
+        ('səɹvˈA', ["p1=@SUBJX"]),
+        ('səɹvˈA', ["p1=^|please", "n1=@IMPN"]),
+        ('səɹvˈA', ["p2=@MODAL|@DO|to", "p1=@ADV|@SUBJX|all|both"]),
+        ('səɹvˈA', ["p1~s", "p1!~'s|ss|us|is|ous|ics|ness", "p1!=@NOTPL|@DETN|@BE|@HAVE|@PREP|@ADV", "n1!=of|is|was|are|were|and|or|$|to|for|that|which|who|in|on|at|with|by|as|but|has|had|have|will|would"]),
+        ('səɹvˈA', ["P=@MODAL|@DO", "p1~s", "n1=$"]),
+        ('səɹvˈA', ["p1=often|sometimes|always|never|usually|rarely|seldom|also|frequently|regularly|occasionally|routinely"]),
+    ],
+    'tear': [
+        ('tˈɛɹ', ["p1=and", "p2=wear"]),
+        ('tˈɛɹ', ["p1=^|please|to|@MODAL|@DO|@SUBJX|not", "n1=@OBJ|along|up|down|off|apart|open|out|through|into|at"]),
+        ('tˈɛɹ', ["p1=acl|muscle|ligament|meniscus|rotator|hamstring|tendon|cartilage|retinal"]),
+        ('tˈɛɹ', ["p1=a|the|small|tiny|big|large|minor|long|little", "n1=in|on|at", "N=shirt|jeans|fabric|sleeve|paper|tent|sail|seam|pants|dress|sheet|muscle|ligament|cartilage|knee|meniscus|tendon|bag|screen|upholstery|canvas|coat|jacket|sock|glove|lining|skin"]),
+    ],
+    'tears': [
+        ('tˈɛɹz', ["p1=small|tiny|big|large|minor|long|several|little|multiple|muscle|ligament|any", "N!=eyes|joy|of|streamed|streaming|rolled|ran|welled|flowed"]),
+        ('tˈɛɹz', ["p1=@SUBJX|it|and|then|never|always|just|carefully|quickly", "n1=@OBJ|open|up|down|off|apart|into|through|out|at"]),
+    ],
+    'upset': [
+        ('ˈʌpsɛt', ["p1=@DETN|biggest|major|huge|stunning|big|shocking|surprise|massive|historic|minor|first-round", "n1!=@DETX|me|him|her|them|us|you|it|about|that|with|by|when|stomach"]),
+    ],
+    'used': [
+        ('jˈust', ["n1=to", "p1=@BE|get|got|gets|getting|become|became|grew", "n2~ing|@DETX|it|this|that|them|him|her|me|us|being|having"]),
+        ('jˈust', ["n1=to", "p1=@SUBJX|it|never|always|once|not|also|just|people|there|things|we|they"]),
+    ],
+}
+# HOMOGRAPHS-END
+
+
+def hg_set(v: str) -> set[str]:
+    out: set[str] = set()
+    for x in v.split("|"):
+        out |= set(HG_CLASSES[x[1:]].split()) if x.startswith("@") else {x}
+    return out
+
+
+_HG_SETS: dict[str, set[str]] = {}
+
+
+def hg_test(t: str, prev: list[str], nxt: list[str], cap: bool) -> bool:
+    if t == "cap":
+        return cap
+    if t == "!cap":
+        return not cap
+    for op in ("!=", "!~", "=", "~"):
+        k = t.find(op)
+        if k > 0:
+            break
+    field, vals = t[:k], t[k + len(op):]
+    if field in ("P", "N"):
+        ws = [w for w in (prev if field == "P" else nxt) if w not in ("^", "$")] or [prev[-1] if field == "P" else nxt[-1]]
+    else:
+        seq = prev if field[0] == "p" else nxt
+        n = int(field[1]) - 1
+        ws = [seq[n] if n < len(seq) else seq[-1]]
+    if op in ("~", "!~"):
+        ends = vals.split("|")
+        hit = any(w not in ("^", "$") and any(w.endswith(e) for e in ends) for w in ws)
+        return hit if op == "~" else not hit
+    s = _HG_SETS.get(vals)
+    if s is None:
+        s = _HG_SETS[vals] = hg_set(vals)
+    hit = any(w in s for w in ws)
+    return not hit if op == "!=" else hit
+
+
 OPEN = "\"'“‘([{«"
 CLOSE = "\"'”’)]}»,.!?;:…"
+
+
+USER_FORMAT = "leokani-g2p-user/1"
+SIBILANT_END = set("szʃʒʧʤ")
+VOICELESS_END = set("ptkfθ")
+
+
+class UserLexicon:
+    """Custom pronunciations (brands, people, places), checked before the lexicon and before any normaliser rule.
+
+    A value is phonemes (written /like this/ in files, or {"phonemes": ...}) or a respelling (plain text, or
+    {"say": ...}) that is then read as written text. Keys are single tokens. A key with no capital letter matches
+    any casing; a key with a capital matches only that casing, and wins. "Leokani's" falls back to "Leokani"
+    (phonemes + ᵻz/s/z, or the respelling + 's); "James'" to "James" with nothing added. The format is shared by
+    every port: product/data/leokani-g2p-user-lexicon.schema.json and USER-LEXICON.md."""
+
+    def __init__(self, entries=None, symbols: set[str] | None = None):
+        self.symbols = symbols                              # allowed phoneme symbols (None: no check)
+        self.exact: dict[str, tuple[str, str]] = {}         # key with a capital -> (kind, value)
+        self.lower: dict[str, tuple[str, str]] = {}         # all-lowercase key
+        if entries:
+            self.update(entries)
+
+    def __len__(self) -> int:
+        return len(self.exact) + len(self.lower)
+
+    @staticmethod
+    def parse(value) -> tuple[str, str]:
+        if isinstance(value, dict):
+            if set(value) == {"phonemes"}:
+                kind, val = "phonemes", value["phonemes"]
+            elif set(value) == {"say"}:
+                kind, val = "say", value["say"]
+            else:
+                raise ValueError(f"an entry is {{\"phonemes\": ...}} or {{\"say\": ...}}, not {value!r}")
+        elif isinstance(value, str):
+            v = value.strip()
+            if len(v) >= 2 and v[0] == "/" and v[-1] == "/":
+                kind, val = "phonemes", v[1:-1]
+            else:
+                kind, val = "say", v
+        else:
+            raise ValueError(f"not a pronunciation: {value!r}")
+        val = " ".join(val.split())
+        if not val:
+            raise ValueError("an empty pronunciation")
+        return kind, val
+
+    def add(self, word: str, value=None, *, phonemes: str | None = None, say: str | None = None) -> None:
+        """add("Leokani", "/lˌAOkˈɑni/"), add("Siobhan", say="shivawn"), add("gif", phonemes="ʤˈɪf")."""
+        if (value is None) + (phonemes is None) + (say is None) != 2:
+            raise ValueError("give exactly one of value, phonemes= or say=")
+        kind, val = self.parse(value if value is not None else
+                               {"phonemes": phonemes} if phonemes is not None else {"say": say})
+        key = word.strip().replace("’", "'")
+        key = Normalizer.split(key)[1] or key                # matched against a token's core: "Mx." -> "Mx"
+        if not key or any(c.isspace() for c in key):
+            raise ValueError(f"a key is one token with no spaces: {word!r}")
+        if kind == "phonemes" and self.symbols is not None:
+            bad = sorted({c for c in val if c != " " and c not in self.symbols})
+            if bad:
+                raise ValueError(f"{word}: unknown phoneme symbols {' '.join(bad)}")
+        (self.exact if key != key.lower() else self.lower)[key] = (kind, val)
+
+    def update(self, entries) -> None:
+        if isinstance(entries, UserLexicon):
+            self.exact.update(entries.exact)
+            self.lower.update(entries.lower)
+            return
+        if isinstance(entries, dict) and "words" in entries and "format" in entries:
+            if entries["format"] != USER_FORMAT:
+                raise ValueError(f"not a {USER_FORMAT} file: {entries['format']!r}")
+            entries = entries["words"]
+        if not isinstance(entries, dict):
+            raise ValueError("a user lexicon is an object: word -> pronunciation")
+        for k, v in entries.items():
+            self.add(k, v)
+
+    def load(self, path: str) -> "UserLexicon":
+        """Add the entries of a .json file (the schema) or a .tsv file (key TAB value, # comments)."""
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        if path.lower().endswith(".json"):
+            self.update(json.loads(text))
+            return self
+        for n, ln in enumerate(text.splitlines(), 1):
+            ln = ln.strip().lstrip("\ufeff")
+            if not ln or ln.startswith("#"):
+                continue
+            if "\t" not in ln:
+                raise ValueError(f"{path}:{n}: expected key<TAB>value")
+            k, v = ln.split("\t", 1)
+            try:
+                self.add(k, v)
+            except ValueError as e:
+                raise ValueError(f"{path}:{n}: {e}") from None
+        return self
+
+    def get(self, core: str) -> tuple[str, str] | None:
+        c = core.replace("’", "'")
+        return self.exact.get(c) or self.lower.get(c.lower())
+
+    def rewrite(self, core: str) -> tuple[str, str] | None:
+        """A token's core -> ("phonemes", ph) or ("say", text), possessives included, or None."""
+        hit = self.get(core)
+        if hit is not None:
+            return hit
+        c = core.replace("’", "'")
+        if len(c) > 2 and c[-2:] in ("'s", "'S"):
+            hit = self.get(c[:-2])
+            if hit is None:
+                return None
+            kind, val = hit
+            if kind == "say":
+                return kind, val + "'s"
+            last = val.replace(PRIMARY, "").replace(SECONDARY, "").rstrip()[-1:]
+            return kind, val + ("ᵻz" if last in SIBILANT_END else "s" if last in VOICELESS_END else "z")
+        if len(c) > 2 and c[-1] == "'" and c[-2] in "sS":
+            return self.get(c[:-1])
+        return None
 
 
 class Normalizer:
@@ -633,6 +1415,8 @@ class Normalizer:
         lexicon = known or (lambda w: False)
         self.known = lambda w: w in SAY_AS or lexicon(w)    # is w a word the lexicon (or SAY_AS) has
         self.letters = letters or {}                        # letter name phonemes, "a" -> ˈA
+        self.user: UserLexicon | None = None                # custom pronunciations, checked before any rule
+        self._user_on = True
 
     # ---- helpers
     def spelled(self, w: str) -> bool:
@@ -648,6 +1432,15 @@ class Normalizer:
 
     def spell(self, s: str) -> list[str]:
         return [self.letter(c) if c.isalpha() else ONES[int(c)] for c in s if c.isalnum() and c.isascii()]
+
+    def spell_word(self, s: str, end: str = "") -> list[str]:
+        """An initialism said as one word, stress on the last letter ("NBA"); end is a plural or
+        possessive ("IDs", "AGC's")."""
+        names = [self.letters.get(c.lower()) for c in s]
+        if not s.isalpha() or not s.isascii() or any(n is None for n in names):
+            return self.spell(s)
+        last = self.letter_plural(s[-1], "" if end == "s" else end).split(PH, 1)[1] if end else names[-1]
+        return [f"{s}{end}{PH}" + "".join(n.replace(PRIMARY, SECONDARY) for n in names[:-1]) + last]
 
     def segment(self, run: str) -> list[str] | None:
         """A run of letters written as one ('milliwattlabs') split into lexicon words, fewest pieces first."""
@@ -827,6 +1620,18 @@ class Normalizer:
         if PH in t:
             return [t], 1
         lead, core, trail = self.split(t)
+        user = self.user.rewrite(core) if self.user is not None and self._user_on and core else None
+        if user is not None:                                 # a custom pronunciation, before any rule
+            kind, val = user
+            if kind == "phonemes":
+                words = [core + PH + val]
+            else:
+                self._user_on = False                        # a respelling's words are not looked up again
+                try:
+                    words = [w for w in self(val, pauses).split(" ") if w]
+                finally:
+                    self._user_on = True
+            return self._finish(words, 1, lead, core, trail)
         prev = self.split(toks[i - 1])[1] if i else ""
         prev_end = i == 0 or toks[i - 1][-1:] in ".!?:;"   # this word starts a sentence or clause
         prev2 = self.split(toks[i - 2])[1].lower() if i > 1 else ""
@@ -839,6 +1644,10 @@ class Normalizer:
         if res is None:
             return [t], 1
         words, used, trail = res
+        return self._finish(words, used, lead, core, trail)
+
+    @staticmethod
+    def _finish(words, used, lead, core, trail):
         if "(" in lead and ")" not in trail and (used > 1 or ")" in core):
             lead = lead.replace("(", "")                     # "(555) 867-5309": the bracket closed inside
         if not words:
@@ -853,11 +1662,12 @@ class Normalizer:
         """-> (words, tokens used, trailing punctuation) or None to keep the token as written."""
         if not core:
             return None
-        for rules in (self.more2, self.more):
+        for rules in (self.letters_first, self.more2, self.more, self.more3):
             res = rules(core, trail, prev, prev2, nxt, nxt_raw, toks, i, pauses)
             if res is not None:
                 return res
-        return self.basic(core, trail, prev, prev2, prev_end, nxt, nxt_raw, toks, i, pauses)
+        res = self.basic(core, trail, prev, prev2, prev_end, nxt, nxt_raw, toks, i, pauses)
+        return res if res is not None else self.capitals(core, trail, prev, nxt, toks, i)
 
     def sub(self, text: str, pauses: bool) -> list[str]:
         return self(text, pauses).split(" ")
@@ -1229,6 +2039,272 @@ class Normalizer:
             return [core + PH + ADJ_FORMS["minute"]], 1, trail
         return None
 
+    # ---- v1.2: letters, codes, ranges and units (the v1.2 blind batches)
+    def letter_plural(self, c: str, possessive: str = "") -> str:
+        """'Os' in "CEOs", 'C's' in "AGC's": a letter name said with a plural or possessive ending."""
+        ph = self.letters.get(c.lower(), "")
+        return f"{c.upper()}{possessive or 's'}{PH}{ph}{'ᵻz' if c.lower() in LETTER_PLURAL_ES else 's' if c.lower() in LETTER_PLURAL_S else 'z'}"
+
+    def initialism(self, w: str) -> bool:
+        """An all-caps run said letter by letter: the lexicon spells it, or it doesn't know it and English can't
+        say it as a word."""
+        if w in ACRONYM_WORDS or w in SAY_AS_CASED or ROMAN.match(w) or not (w.isascii() and w.isalpha()):
+            return False
+        if self.cased(w):
+            return False
+        if self.known(w.lower()):
+            return self.spelled(w.lower()) and len(self.reading(w.lower())) > 0
+        return not pronounceable(w)
+
+    def single(self, t: str) -> bool:
+        c = self.split(t)[1]
+        return len(c) == 1 and c.isalpha() and c.isupper() and c.isascii()
+
+    def shouted(self, toks: list[str], i: int) -> bool:
+        """The words around token i are written in capitals as ordinary words ("PLEASE READ THE MANUAL")."""
+        n = 0
+        for j in (i - 2, i - 1, i + 1, i + 2):
+            if 0 <= j < len(toks):
+                c = self.split(toks[j])[1]
+                if len(c) >= 3 and c.isupper() and c.replace("'", "").replace("’", "").isalpha() and \
+                        self.known(c.lower()) and not self.initialism(c):
+                    n += 1
+        return n >= 2
+
+    def letters_first(self, core, trail, prev, prev2, nxt, nxt_raw, toks, i, pauses):
+        """v1.2 letter rules, ahead of every other rule: spaced, dotted and hyphenated letters, initialisms with
+        endings, shouted words."""
+        low, pl, nl = core.lower(), prev.lower(), nxt.lower()
+        # spaced single letters: "A G C" ("A-G-C" and "c-a-t" stay one token, spelled as v1.1 does); a lone "A" or "I" before a
+        # word stays the article or the pronoun
+        if core in ("A", "I"):
+            after_letter = i > 0 and self.single(toks[i - 1]) and self.split(toks[i - 1])[1] not in ("A", "I") \
+                and not toks[i - 1][-1:] in ".!?;:"
+            before_letter = not trail and i + 1 < len(toks) and self.single(nxt_raw)
+            if after_letter or before_letter or (core == "A" and (pl in ("letter", "letters", "an") or (
+                    nl in ("and", "or") and not trail) or (trail[:1] in ",;" and self.single(nxt_raw)))) or (
+                    pl in ("and", "or") and i > 1 and self.single(toks[i - 2])):
+                return [self.letter(core)], 1, trail
+        # plural and possessive initialisms: "CEOs", "PDFs", "AGC's"
+        m = re.match(r"^([A-Z]{2,6})(s|'s|’s)$", core)
+        if m and m.group(1) not in SHORTHAND_CASED and self.initialism(m.group(1)) and core not in SHORTHAND_CASED \
+                and core != "IDs":                                           # "IDs" keeps v1.1's reading
+            st = m.group(1)
+            return self.spell_word(st, m.group(2)), 1, trail
+        # dotted capitals: "A.G.C.", "N.Y.C.", "A.I." (the full stop ends a sentence only before a capital or at the end)
+        if re.match(r"^(?:[A-Z]\.){1,}[A-Z]$", core) and trail.startswith(".") and len(core) >= 3:
+            keep = trail if i + 1 >= len(toks) or nxt[:1].isupper() and nxt != "I" else trail[1:]
+            if core.replace(".", "") in ACRONYM_WORDS:                       # "N.A.T.O." is still Nato
+                return [core.replace(".", "")], 1, keep
+            return self.spell_word(core.replace(".", "")), 1, keep
+        # a middle initial: "George W. Bush", "Ulysses S. Grant" (not a direction)
+        initial = lambda t: bool(re.match(r"^[A-Z]\.$", t))  # noqa: E731
+        if len(core) == 1 and core.isupper() and trail == "." and nxt[:1].isupper() and nl not in SENTENCE_START \
+                and (initial(nxt_raw) or i and initial(toks[i - 1]) and nxt.isalpha() or
+                     prev[:1].isupper() and prev.isalpha() and not prev.isupper() and len(nxt) > 1 and nxt.isalpha()
+                     and toks[i - 1][-1:] not in ".!?:;,") and \
+                not any(self.split(t)[1].lower().rstrip(".") in STREET_WORDS for t in toks[i + 1:i + 4]):
+            return [self.letter(core)], 1, trail[1:]
+        # a letter before a word: "p-value", "t-test", "x-axis"; a word before a letter: "Type-C", "Plan-B"
+        m = re.match(r"^([a-zA-Z])-(value|values|test|tests|axis|score|scores|statistic|coordinate|intercept)$", core)
+        if m:
+            return [self.letter(m.group(1)), m.group(2)], 1, trail
+        m = re.match(r"^([A-Za-z]{2,})-([A-Z])$", core)
+        if m and m.group(1).isalpha():
+            return [m.group(1), self.letter(m.group(2))], 1, trail
+        # a letter and a model number: "F-150", "B-52", "F-16"
+        m = re.match(r"^([A-Z]{1,2})-(\d{2,3})$", core)
+        if m and core[:2] != "I-":
+            d = m.group(2)
+            num = cardinal(int(d)).split(" ") if len(d) == 2 or d[1] == "0" and d[2] == "0" else \
+                [ONES[int(d[0])]] + (["oh", ONES[int(d[2])]] if d[1] == "0" else cardinal(int(d[1:])).split(" "))
+            return self.spell(m.group(1)) + num, 1, trail
+        # mixed-case initialisms: "DoD", "DoE", "MoU"
+        if re.match(r"^[A-Z]o[A-Z]s?$", core) and core not in SAY_AS_CASED:
+            return self.spell_word(core[:3], core[3:]), 1, trail
+        # a resolution: "1080p", "720p", "4K" stays
+        m = re.match(r"^(\d{3,4})([pi])$", core)
+        if m:
+            d = m.group(1)
+            return (pair_words(int(d)) if len(d) == 4 else [ONES[int(d[0])]] + cardinal(int(d[1:])).split(" ")) + \
+                [self.letter(m.group(2))], 1, trail
+        # a possessive of a capitalised word: "NATO's"
+        m = re.match(r"^([A-Z]{4,})(['’]s)$", core)                        # "WHO's" stays v1.1's
+        if m and not self.initialism(m.group(1)) and self.reading(m.group(1).lower()):
+            ph = self.reading(m.group(1).lower())[0]
+            end = "ᵻz" if ph[-1:] in SIBILANT_END else "s" if ph[-1:] in VOICELESS_END else "z"
+            return [core + PH + ph + end], 1, trail
+        # a common word shouted in capitals keeps its word reading ("I CAN'T BELIEVE IT"), not its letters
+        if len(core) >= 2 and core.isupper() and core.replace("'", "").replace("’", "").isalpha() and \
+                self.known(low) and core not in ACRONYM_WORDS and core not in SAY_AS_CASED and \
+                core not in SHORTHAND_CASED and core not in ZONES and not ROMAN.match(core) and \
+                (self.common(low) or not self.cased(core)) and self.shouted(toks, i) and \
+                any(not self.spelled_form(f, low) for f in self.reading(low)):
+            return [low if i and toks[i - 1][-1:] not in ".!?" else low.capitalize()], 1, trail
+        return None
+
+    def spelled_form(self, f: str, w: str) -> bool:
+        bare = lambda x: x.replace(PRIMARY, "").replace(SECONDARY, "").replace(" ", "")  # noqa: E731
+        return bare(f) == "".join(bare(self.letters.get(c, "?")) for c in w)
+
+    def more3(self, core, trail, prev, prev2, nxt, nxt_raw, toks, i, pauses):
+        low, pl, nl = core.lower(), prev.lower(), nxt.lower()
+        is_num = lambda x: bool(re.match(r"^-?\d[\d,]*(\.\d+)?$", x))  # noqa: E731
+        sing_unit = lambda n, u: (UNITS[u][0] if n in ("1", "-1") else UNITS[u][1]).split(" ")  # noqa: E731
+        # respelled capitals: "IEEE", "WWII", "PhD"
+        if core in CASED_SAY:
+            return self.sub(CASED_SAY[core], pauses), 1, trail
+        if core == "ID":                                                     # "your ID": not the Freudian id ("IDs"
+            return [core + PH + "ˌIdˈi"], 1, trail                           # keeps v1.1's reading)
+        # year ranges: "1990–95", "2019-2020 season"
+        m = re.match(r"^(1[1-9]\d\d|20\d\d)[–-](\d\d|1[1-9]\d\d|20\d\d)$", core)
+        if m and not core.endswith("00") or m and re.match(r"^(1[1-9]\d\d|20\d\d)[–-](\d\d|\d{4})$", core) and \
+                int(m.group(1)) % 100:
+            a, b = int(m.group(1)), m.group(2)
+            bw = year_words(int(b)) if len(b) == 4 else (["oh", ONES[int(b[1])]] if b[0] == "0" else
+                                                         cardinal(int(b)).split(" "))
+            if len(b) == 4 and int(b) <= a or len(b) == 2 and int(b) <= a % 100:
+                pass                                                          # not a range: a code
+            else:
+                joint = [] if nl in ("season", "seasons", "school", "academic", "fiscal", "tax", "budget",
+                                     "financial") else ["to"]
+                return year_words(a) + joint + bw, 1, trail
+        # a range in percent: "20–30%"
+        m = re.match(r"^(\d[\d,]*(?:\.\d+)?)[–-](\d[\d,]*(?:\.\d+)?)%$", core)
+        if m:
+            return [m.group(1), "to", m.group(2), "percent"], 1, trail
+        # day ranges after a month: "Jan 3–7", "May 12-19"
+        m = re.match(r"^(\d{1,2})[–-](\d{1,2})$", core)
+        if m and (prev in MONTHS or pl.rstrip(".") in MONTH_ABBR and prev[:1].isupper()) and \
+                1 <= int(m.group(1)) < int(m.group(2)) <= 31:
+            return [ordinal(int(m.group(1))), "to", ordinal(int(m.group(2)))], 1, trail
+        # fraction ranges: "1/2-1 cup", "1–1/2 tsp"
+        m = re.match(r"^(\d{1,2}(?:/\d{1,2})?)[–-](\d{1,2}(?:/\d{1,2})?)$", core)
+        if m and "/" in core:
+            out = []
+            for k, part in enumerate(m.groups()):
+                if "/" in part:
+                    fr = self.fraction(*(int(x) for x in part.split("/")))
+                    if not fr:
+                        out = None
+                        break
+                    out += (["to"] if k else []) + fr
+                else:
+                    out += (["to"] if k else []) + [part]
+            if out:
+                return out, 1, trail
+        # aircraft: "Boeing 737-800", "Airbus A320"
+        m = re.match(r"^([1-9])(\d\d)(?:-(\d{1,3}))?$", core)
+        if m and pl in ("boeing", "airbus", "embraer", "bombardier", "douglas", "md", "dc"):
+            return [ONES[int(m.group(1))]] + cardinal(int(m.group(2))).split(" ") + \
+                (cardinal(int(m.group(3))).split(" ") if m.group(3) else []), 1, trail
+        # years with an era: "A.D. 1250", "500 BC"
+        if re.match(r"^\d{3,4}$", core) and (prev.rstrip(".") in ("A.D", "AD", "B.C", "BC", "CE", "BCE", "B.C.E") or
+                                            nxt.rstrip(".") in ("A.D", "AD", "B.C", "BC", "CE", "BCE", "B.C.E")) \
+                and not core.endswith("00"):
+            return year_words(int(core)), 1, trail
+        # a month before a day range: "Jan 3–7"
+        if low.rstrip(".") in MONTH_ABBR and core[0].isupper() and core.isalpha() and \
+                re.match(r"^\d{1,2}[–-]\d{1,2}$", nxt):
+            return [MONTHS[MONTH_ABBR[low.rstrip(".")] - 1]], 1, trail[1:] if trail.startswith(".") else trail
+        # a port: "port 443", "port 8080"
+        if re.match(r"^\d{2,5}$", core) and pl in ("port", "ports") and not prev2 in ("the", "a"):
+            return (pair_words(int(core)) if len(core) == 4 and core[1:] != "000" and int(core) < 2100
+                    else [core[:2], core[2:]] if len(core) == 4 and core[2] != "0" and core[1:] != "000"
+                    else [core[0], core[1:]] if len(core) == 3 and core[1] != "0"
+                    else [core]), 1, trail
+        # a weekday after a dash: "Tue–Thu", "Mon - Fri"
+        if low in DAY_ABBR and core[0].isupper() and core.isalpha() and (prev in ("–", "-", "—", "through", "to") or
+                                                                          pl in ("thru", "until", "till")) and \
+                not (prev in ("through", "to") and nxt[:1].isupper() and nxt.isalpha() and nl not in DAY_ABBR and nxt not in DAY_ABBR.values() and
+                     nl not in MONTH_ABBR):                                  # "I talked to Thu Crosson"
+            return [DAY_ABBR[low]], 1, trail[1:] if trail.startswith(".") else trail
+        # phone numbers: "312 555 0199", "+33 1 42 68 53 00", "ext 12", "988", ZIP+4
+        if re.match(r"^\d{3}$", core) and re.match(r"^\d{3}$", nxt) and i + 2 < len(toks) and \
+                not toks[i].startswith("(") and not (i and re.match(r"^\+\d{1,3}$", toks[i - 1])) and \
+                re.match(r"^\d{4}$", self.split(toks[i + 2])[1]) and not self.split(nxt_raw)[2]:
+            z = self.split(toks[i + 2])
+            return self.phone([core, nxt, z[1]], pauses), 3, z[2]
+        if low in ("ext", "extension", "x") and not trail and re.match(r"^\d{1,5}$", nxt) and (
+                low != "x" or re.search(r"\d", prev)) and i:
+            z = self.split(nxt_raw)
+            return ["extension"] + (digit_words(z[1]) if len(z[1]) > 2 else [z[1]]), 2, z[2]
+        if core == "988" and (pl in ("call", "text", "dial", "or") or not nxt):
+            return digit_words(core), 1, trail
+        if re.match(r"^\d{5}-\d{4}$", core):
+            return digit_words(core.replace("-", "")), 1, trail
+        if re.match(r"^\d{4}$", core) and pl == "in" and prev2 in ("ends", "ending") and (
+                not 1100 <= int(core) <= 2099 or any(self.split(t)[1].lower() in CODE_CUE | {"card", "phone"}
+                                                     for t in toks[max(0, i - 6):i])):
+            return digit_words(core), 1, trail
+        # codes after a cue word: "tracking number 9400111899", "code 482913", "Invoice 2024-0915", "SN 555123"
+        cue = [self.split(t)[1].lower().rstrip(":#") for t in toks[max(0, i - 3):i]]
+        if re.match(r"^#?\d{4,}([-]\d{2,})*$", core) and not is_num(core.replace("-", "x")) and "-" in core or \
+                re.match(r"^\d{5,}$", core):
+            if cue[-3:] == ["the", "code", "is"]:                            # "The code is 351576." reads the number
+                pass
+            elif any(c in CODE_CUE for c in cue[-2:]) or cue[-1:] == ["is"] and any(c in CODE_CUE for c in cue):
+                return digit_words(re.sub(r"\D", "", core)), 1, trail
+        if re.match(r"^\d{4}-\d{3,}$", core) and any(c in CODE_CUE for c in cue[-2:]):
+            return digit_words(core.replace("-", "")), 1, trail
+        # units: "100 m²", "500 MB/s", "10 sq ft", "2 in long", "180 °C", "250 g of flour"
+        m = re.match(r"^(\d[\d,]*(?:\.\d+)?)?(km|m|cm|mm|ft|in|mi|yd)([²³])$", core)
+        if m and (m.group(1) or is_num(prev)):
+            n = m.group(1) or prev
+            u = {"in": "inch"}.get(m.group(2), m.group(2))
+            name = UNITS[m.group(2)] if m.group(2) in UNITS else ("inch", "inches")
+            words = ("square " if m.group(3) == "²" else "cubic ") + (name[0] if n in ("1", "-1") else name[1])
+            return ([n] if m.group(1) else []) + words.split(" "), 1, trail
+        m = re.match(r"^(\d[\d,]*(?:\.\d+)?)?([KMGT]B|[kMG]b|km|m|ft|mi)/(s|sec|h|hr|min)$", core)
+        if m and (m.group(1) or is_num(prev)):
+            n = m.group(1) or prev
+            u = m.group(2)
+            name = UNITS.get(u) or {"Mb": ("megabit", "megabits"), "Gb": ("gigabit", "gigabits"),
+                                    "kb": ("kilobit", "kilobits")}[u]
+            per = {"s": "second", "sec": "second", "h": "hour", "hr": "hour", "min": "minute"}[m.group(3)]
+            return ([n] if m.group(1) else []) + (name[0] if n in ("1", "-1") else name[1]).split(" ") + \
+                ["per", per], 1, trail
+        if low in ("sq", "sq.", "cu") and is_num(prev) and (nxt in UNITS or nl in ("in", "ft")):
+            z = self.split(nxt_raw)
+            u = z[1] if z[1] in UNITS else z[1].lower()
+            name = UNITS[u] if u in UNITS else ("inch", "inches")
+            return ["square" if low.startswith("sq") else "cubic"] + \
+                (name[0] if prev in ("1", "-1") else name[1]).split(" "), 2, z[2].lstrip(".") if z[2] != "." else z[2]
+        if core == "in" and is_num(prev) and not trail and nl in ("long", "wide", "tall", "deep", "thick", "high",
+                                                                  "across", "diameter", "square"):
+            return ["inch" if prev == "1" else "inches"], 1, trail
+        if core in ("°C", "°F", "°") and is_num(prev):
+            return (["degree"] if prev in ("1", "-1") else ["degrees"]) + \
+                ({"°C": ["Celsius"], "°F": ["Fahrenheit"]}.get(core, [])), 1, trail
+        if core == "g" and is_num(prev) and (nl in ("of", "") or trail):
+            return sing_unit(prev, "g"), 1, trail
+        # Roman numerals: a list item "i." at the start of a line, "Grand Theft Auto V"
+        if i == 0 and trail == "." and ROMAN.match(core.upper()) and (core.islower() or len(core) > 1 and core.isupper()) and \
+                nxt[:1].isupper():
+            return [cardinal(roman_value(core.upper())).capitalize()], 1, trail
+        if core == "V" and prev[:1].isupper() and prev.isalpha() and not prev.isupper() and pl not in REGNAL and \
+                pl not in LETTER_CUE and i > 1 and toks[i - 1][-1:] not in ".!?:;" and (not nxt or nxt[:1].islower()):
+            return ["five"], 1, trail
+        # web: "https" said as letters, "@bakes.by.bella", "@NYTimes"
+        if low in ("http", "https") and core.islower():
+            return self.spell(low), 1, trail
+        if re.match(r"^@[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$", core):
+            return ["at"] + self.say_parts(core[1:]), 1, trail
+        if re.match(r"^@[A-Za-z0-9_]+$", core) and re.search(r"[a-z]", core) and re.search(r"[A-Z]{2}[a-z]", core):
+            words = ["at"]
+            for part in re.findall(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|\d+|_", core[1:]):
+                words += ["underscore"] if part == "_" else self.say_run(part) if not part.isupper() \
+                    else self.spell(part) if self.initialism(part) or len(part) <= 3 else [part]
+            return words, 1, trail
+        return None
+
+    def capitals(self, core, trail, prev, nxt, toks, i):
+        """Last: an all-caps word the lexicon doesn't have is spelled unless English could say it as a word."""
+        if len(core) >= 2 and core.isupper() and core.isalpha() and core.isascii() and not self.known(core.lower()) \
+                and not self.cased(core) and self.initialism(core):
+            return self.spell_word(core), 1, trail
+        return None
+
     def ip(self, host: str) -> list[str]:
         """192.168.1.1 -> one ninety-two dot one sixty-eight dot one dot one."""
         words = []
@@ -1279,7 +2355,11 @@ class Normalizer:
             words += self.domain(host)
             for seg in (m.group(3) or "").split("/")[1:]:
                 words.append("slash")
-                if seg:
+                if re.match(r"^[a-z]{2}[-_][a-z]{2}$", seg, re.I):
+                    words += self.spell(seg[:2]) + [SEP_WORDS[seg[2]]] + self.spell(seg[3:])
+                elif re.match(r"^[1-9]\d{0,3}$", seg):
+                    words.append(seg)
+                elif seg:
                     words += self.say_parts(seg)
             return words, 1, trail
         m = self.MONEY.match(core)
@@ -1310,7 +2390,7 @@ class Normalizer:
                 return self.phone([core, m2.group(1), m2.group(2)], pauses), 2, self.split(nxt_raw)[2]
         if re.match(r"^\+\d{1,3}$", core):
             groups, j = [core[1:]], i + 1
-            while j < len(toks) and re.match(r"^\d{2,4}(-\d{2,4})*$", self.split(toks[j])[1]):
+            while j < len(toks) and re.match(r"^\d{1,4}(-\d{1,4})*$", self.split(toks[j])[1]):
                 groups += self.split(toks[j])[1].split("-")
                 j += 1
                 if self.split(toks[j - 1])[2]:
@@ -1525,6 +2605,49 @@ class Normalizer:
             return [core + PH + "bˈæs"], 1, trail
         if is_emoji(core):
             return [], 1, trail
+        said = self.homograph(core, toks, i)
+        if said:
+            return [core + PH + said], 1, trail
+        return None
+
+    # ---- homographs (v1.2): HOMOGRAPHS, first matching rule wins
+    @staticmethod
+    def _ctx_word(t: str) -> str:
+        a, b = 0, len(t)
+        while a < b and t[a] in OPEN:
+            a += 1
+        while b > a and t[b - 1] in CLOSE:
+            b -= 1
+        return t[a:b].lower().replace("’", "'")
+
+    def homograph(self, core: str, toks: list[str], i: int) -> str | None:
+        """The phonemes of the sense a homograph's context asks for, or None to leave it to the context model."""
+        rules = HOMOGRAPHS.get(core.lower())
+        if rules is None or not core.isalpha():
+            return None
+        prev = []                                            # p1, p2, p3 within the clause; "^" before its start
+        for j in range(i - 1, i - 4, -1):
+            if j < 0 or toks[j][-1:] in HG_STOP:
+                prev.append("^")
+                break
+            prev.append(self._ctx_word(toks[j]))
+        nxt = []                                             # n1, n2, n3 within the clause; "$" after its end
+        if toks[i][-1:] not in HG_STOP:
+            for j in range(i + 1, i + 4):
+                if j >= len(toks):
+                    nxt.append("$")
+                    break
+                nxt.append(self._ctx_word(toks[j]))
+                if toks[j][-1:] in HG_STOP:
+                    break
+        if not nxt or len(nxt) < 3 and nxt[-1] != "$":
+            nxt.append("$")
+        if prev[-1:] != ["^"] and len(prev) < 3:
+            prev.append("^")
+        cap = core[:1].isupper() and prev[0] != "^"
+        for said, tests in rules:
+            if all(hg_test(t, prev, nxt, cap) for t in tests):
+                return said or None
         return None
 
     def pairs(self, d: str) -> list[str]:
@@ -1581,8 +2704,12 @@ def split_long(w: str) -> list[str]:
 
 
 class LeokaniG2P:
-    def __init__(self, directory: str = HERE, threads: int = 1):
+    def __init__(self, directory: str = HERE, threads: int = 1, user_lexicon=None, variant: str | None = None):
+        """user_lexicon: custom pronunciations, a path (.json or .tsv), a dict or a UserLexicon (see UserLexicon).
+        variant: "micro" (default) or "mini", looked up under directory (see VARIANTS)."""
         import onnxruntime as ort
+        directory = variant_dir(directory, variant)
+        self.variant = variant or DEFAULT_VARIANT
         path = os.path.join(directory, "leokani-g2p.json.gz")
         with gzip.open(path, "rt", encoding="utf-8") as f:
             self.doc = json.load(f)
@@ -1613,6 +2740,22 @@ class LeokaniG2P:
         self.ctx = sess("context.onnx")
         self.max_out = int(self.doc["oov"]["maxOut"])
         self.cache: dict[str, str] = {}
+        self.user_lexicon = UserLexicon(symbols=set(self.out_syms) | {PRIMARY, SECONDARY})
+        self.normalizer.user = self.user_lexicon
+        if user_lexicon is not None:
+            if isinstance(user_lexicon, (str, os.PathLike)):
+                self.load_user_lexicon(os.fspath(user_lexicon))
+            else:
+                self.user_lexicon.update(user_lexicon)
+
+    # ---- custom pronunciations
+    def add_pronunciation(self, word: str, value=None, *, phonemes: str | None = None, say: str | None = None):
+        """g2p.add_pronunciation("Leokani", phonemes="lˌAOkˈɑni"); g2p.add_pronunciation("Siobhan", say="shivawn")."""
+        self.user_lexicon.add(word, value, phonemes=phonemes, say=say)
+
+    def load_user_lexicon(self, path: str) -> None:
+        """Add the custom pronunciations in a .json or .tsv file."""
+        self.user_lexicon.load(path)
 
     # ---- bases
     def _word(self, w: str) -> str | None:
@@ -1777,7 +2920,7 @@ TITLES = {"dr", "mr", "mrs", "ms", "st", "vs", "etc", "e.g", "i.e", "no", "jr", 
 
 def chunks(text: str) -> list[str]:
     """Clause chunks: break after . ! ? ; : (not after a title such as 'Dr.'), and after a comma once a chunk has
-    12 words. The first chunk needs 3 words. This is the unit the model was trained on."""
+    12 words. The first chunk needs 3 words. This is the unit Leokani-tts reads."""
     words = text.split(" ")
     out, cur = [], []
     for w in words:
@@ -1821,8 +2964,7 @@ PRONOUN_AFTER = {"am", "are", "is", "was", "were", "do", "does", "did", "have", 
                  "would", "shall", "should", "may", "might", "must", "aren't", "isn't", "wasn't", "weren't",
                  "don't", "doesn't", "didn't", "haven't", "hasn't", "hadn't", "can't", "couldn't", "won't",
                  "wouldn't", "shouldn't", "mustn't"}
-# Characters espeak-ng speaks differently across platforms (Roman numerals, circled letters): the training data
-# had them silent.
+# Characters said differently from one platform to the next (Roman numerals, circled letters): read as silent.
 SILENT = ((0x2160, 0x2182), (0x2185, 0x2188), (0x24B6, 0x24E9))
 
 
@@ -1910,8 +3052,12 @@ def main(argv=None) -> int:
     ap.add_argument("piece", nargs="?", help="one clause (no punctuation); default: read lines from stdin")
     ap.add_argument("--text", help="a whole line, split into clauses as leokani.py does")
     ap.add_argument("--model", default=HERE, help="directory with leokani-g2p.json.gz and the .onnx files")
+    ap.add_argument("--variant", choices=list(VARIANTS), default=DEFAULT_VARIANT, help="model size (default micro)")
+    ap.add_argument("--lexicon", action="append", default=[], help="custom pronunciations (.json or .tsv)")
     a = ap.parse_args(argv)
-    g = LeokaniG2P(a.model)
+    g = LeokaniG2P(a.model, variant=a.variant)
+    for path in a.lexicon:
+        g.load_user_lexicon(path)
     if a.text is not None:
         print(g.phonemize(a.text))
         return 0

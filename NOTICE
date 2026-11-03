@@ -5,8 +5,8 @@ When you use or share Leokani G2P, credit it as: Leokani G2P by Milliwatt Labs (
 
 Provenance
 ----------
-Produces espeak-ng-compatible phonemes (the same Kokoro/misaki-style codes Leokani-tts and Kokoro use). Our own
-code and models, built from scratch; contains no espeak-ng code or data files.
+Produces espeak compatible phoneme codes, made from the ground up: the same Kokoro/misaki-style codes
+Leokani-tts and Kokoro use. It contains no espeak-ng code or data files.
 
 Third-party credits
 -------------------

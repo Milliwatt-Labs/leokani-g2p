@@ -1,0 +1,265 @@
+{
+ "format": "leokani-g2p-user/1",
+ "note": "a port's user lexicon must load 'lexicon' (and 'tsv', which is the same entries) and reproduce every 'normalized' and 'leokani' string exactly; 'without' is the output with no user lexicon. Every 'reject' document must fail to load.",
+ "lexicon": {
+  "format": "leokani-g2p-user/1",
+  "words": {
+   "Leokani": "/lˌAOkˈɑni/",
+   "Siobhan": "shivawn",
+   "BBC": {
+    "say": "B B C"
+   },
+   "gif": {
+    "phonemes": "ʤˈɪf"
+   },
+   "nguyen": "win",
+   "Cholmondeley": "/ʧˈʌmli/",
+   "SQL": "sequel",
+   "Gauss": "/ɡˈWs/",
+   "Brandt": "/bɹˈænt/",
+   "Jules": "/ʤˈulz/",
+   "Hattie": "/hˈæɾi/",
+   "Wi-Fi": "/wˈIfˌI/",
+   "node.js": "node J S",
+   "C++": "C plus plus",
+   "911": "nine one one",
+   "Ngozi": "/əŋɡˈOzi/",
+   "Xochitl": "/sˈOʧi/",
+   "kubernetes": "koober netties",
+   "Aoife": "eefa",
+   "Mx.": "mix",
+   "Saoirse": "/sˈɜɹʃə/",
+   "nyc": "New York City",
+   "Thibault": "/tˈibO/",
+   "AGC": {
+    "say": "A G C"
+   }
+  }
+ },
+ "tsv": "# Leokani G2P custom pronunciations: key<TAB>value, /phonemes/ or a respelling\nLeokani\t/lˌAOkˈɑni/\nSiobhan\tshivawn\nBBC\tB B C\ngif\t/ʤˈɪf/\nnguyen\twin\nCholmondeley\t/ʧˈʌmli/\nSQL\tsequel\nGauss\t/ɡˈWs/\nBrandt\t/bɹˈænt/\nJules\t/ʤˈulz/\nHattie\t/hˈæɾi/\nWi-Fi\t/wˈIfˌI/\nnode.js\tnode J S\nC++\tC plus plus\n911\tnine one one\nNgozi\t/əŋɡˈOzi/\nXochitl\t/sˈOʧi/\nkubernetes\tkoober netties\nAoife\teefa\nMx.\tmix\nSaoirse\t/sˈɜɹʃə/\nnyc\tNew York City\nThibault\t/tˈibO/\nAGC\tA G C\n",
+ "lines": [
+  {
+   "text": "Leokani says hi.",
+   "normalized": "LeokanilˌAOkˈɑni says hi.",
+   "leokani": "lˌAOkˈɑni sˈɛz hˈI.",
+   "without": "lˌAOkˈɑni sˈɛz hˈI."
+  },
+  {
+   "text": "LEOKANI is loud.",
+   "normalized": "LEOKANIlˌAOkˈɑni is loud.",
+   "leokani": "lˌAOkˈɑni ɪz lˈWd.",
+   "without": "lˌAOkˈɑni ɪz lˈWd."
+  },
+  {
+   "text": "I met Siobhan's brother.",
+   "normalized": "I met shivawn's brother.",
+   "leokani": "ˈI mˈɛt ʃˈɪvɔnz bɹˈʌðəɹ.",
+   "without": "ˈI mˈɛt sɪˈɑbhənz bɹˈʌðəɹ."
+  },
+  {
+   "text": "Siobhan’s cat sat.",
+   "normalized": "shivawn's cat sat.",
+   "leokani": "ʃˈɪvɔnz kˈæt sˈæt.",
+   "without": "sɪˈɑbhənz kˈæt sˈæt."
+  },
+  {
+   "text": "The BBC runs a GIF and a gif.",
+   "normalized": "The B B C runs a GIFʤˈɪf and a gifʤˈɪf.",
+   "leokani": "ðə bˈi bˈi sˈi ɹˈʌnz ə ʤˈɪf ænd ə ʤˈɪf.",
+   "without": "ðə bˌibˌisˈi ɹˈʌnz ə ɡˈɪf ænd ə ɡˈɪf."
+  },
+  {
+   "text": "Nguyen, NGUYEN and nguyen.",
+   "normalized": "win, win and win.",
+   "leokani": "wˈɪn, wˈɪn ænd wˈɪn.",
+   "without": "wˈɪn, wˈɪn ænd wˈɪn."
+  },
+  {
+   "text": "(Cholmondeley's) house!",
+   "normalized": "(Cholmondeley'sʧˈʌmliz) house!",
+   "leokani": "ʧˈʌmliz hˈWs!",
+   "without": "kˈOməndˌɛliz hˈWs!"
+  },
+  {
+   "text": "Run SQL's planner.",
+   "normalized": "Run sequels planner.",
+   "leokani": "ɹˈʌn sˈikwᵊlz plˈænəɹ.",
+   "without": "ɹˈʌn ˌɛskjˌuˈɛl plˈænəɹ."
+  },
+  {
+   "text": "Gauss's law and the Gausses' house.",
+   "normalized": "Gauss'sɡˈWsᵻz law and the Gausses' house.",
+   "leokani": "ɡˈWsᵻz lˈɔ ænd ðə ɡˈWsᵻz hˈWs.",
+   "without": "ɡˈWsᵻz lˈɔ ænd ðə ɡˈWsᵻz hˈWs."
+  },
+  {
+   "text": "Brandt's lab sells Brandt kits.",
+   "normalized": "Brandt'sbɹˈænts lab sells Brandtbɹˈænt kits.",
+   "leokani": "bɹˈænts lˈæb sˈɛlz bɹˈænt kˈɪts.",
+   "without": "bɹˈænts lˈæb sˈɛlz bɹˈænt kˈɪts."
+  },
+  {
+   "text": "Jules' bike and Jules's car.",
+   "normalized": "Julesʤˈulz' bike and Jules'sʤˈulzᵻz car.",
+   "leokani": "ʤˈulz bˈIk ænd ʤˈulzᵻz kˈɑɹ.",
+   "without": "ʤˈulz bˈIk ænd ʤˈulzᵻz kˈɑɹ."
+  },
+  {
+   "text": "Hattie's hat.",
+   "normalized": "Hattie'shˈæɾiz hat.",
+   "leokani": "hˈæɾiz hˈæt.",
+   "without": "hˈæɾiz hˈæt."
+  },
+  {
+   "text": "bbc is lower, sql too.",
+   "normalized": "bbc is lower, sql too.",
+   "leokani": "bˌibˌisˈi ɪz lˈOəɹ, ˌɛskjˌuˈɛl tˈu.",
+   "without": "bˌibˌisˈi ɪz lˈOəɹ, ˌɛskjˌuˈɛl tˈu."
+  },
+  {
+   "text": "Connect to Wi-Fi now.",
+   "normalized": "Connect to Wi-FiwˈIfˌI now.",
+   "leokani": "kənˈɛkt tə wˈIfˌI nˈW.",
+   "without": "kənˈɛkt tə wˈIfˌI nˈW."
+  },
+  {
+   "text": "Install node.js today.",
+   "normalized": "Install node J S today.",
+   "leokani": "ɪnstˈɔl nˈOd ʤˈA ˈɛs tədˈA.",
+   "without": "ɪnstˈɔl nˈOd dˈɑt ʤˌAˈɛs tədˈA."
+  },
+  {
+   "text": "I write C++ code.",
+   "normalized": "I write C plus plus code.",
+   "leokani": "ˈI ɹˈIt sˈi plˈʌs plˈʌs kˈOd.",
+   "without": "ˈI ɹˈIt sˈi plˈʌsplˈʌs kˈOd."
+  },
+  {
+   "text": "Call 911 now, or 911's line.",
+   "normalized": "Call nine one one now, or nine one one's line.",
+   "leokani": "kˈɔl nˈIn wˈʌn wˈʌn nˈW, ɔɹ nˈIn wˈʌn wˈʌnz lˈIn.",
+   "without": "kˈɔl nˈIn wˈʌn wˈʌn nˈW, ɔɹ nˈInhˈʌndɹɪd ɪlˈɛvən zlˈIn."
+  },
+  {
+   "text": "Ngozi and Xochitl met Aoife.",
+   "normalized": "NgoziəŋɡˈOzi and XochitlsˈOʧi met eefa.",
+   "leokani": "əŋɡˈOzi ænd sˈOʧi mˈɛt ˈifə.",
+   "without": "əŋɡˈOzi ænd sˈOʧil mˈɛt ˈifə."
+  },
+  {
+   "text": "Deploy on kubernetes at 7:45 AM.",
+   "normalized": "Deploy on koober netties at 7:45 AM.",
+   "leokani": "dᵻplˈY ˌɔn kˈubəɹ nˈɛɾɪz æt sˈɛvən fˈɔɹɾi fˈIv ˌAˈɛm.",
+   "without": "dᵻplˈY ˌɔn kˌubəɹnˈɛɾiz æt sˈɛvən fˈɔɹɾi fˈIv ˌAˈɛm."
+  },
+  {
+   "text": "Mx. Thibault spoke to Saoirse.",
+   "normalized": "mix. ThibaulttˈibO spoke to Saoirsesˈɜɹʃə.",
+   "leokani": "mˈɪks. tˈibO spˈOk tə sˈɜɹʃə.",
+   "without": "ˌɛmˈɛks. θˈɪbɔlt spˈOk tə sˈɪɹʃə."
+  },
+  {
+   "text": "She moved to nyc in 2019.",
+   "normalized": "She moved to New York City in 2019.",
+   "leokani": "ʃi mˈuvd tə nˈu jˈɔɹk sˈɪɾi ɪn twˈɛnti nˈIntin.",
+   "without": "ʃi mˈuvd tə nˈɪk ɪn twˈɛnti nˈIntin."
+  },
+  {
+   "text": "\"Leokani,\" she said, \"is here.\"",
+   "normalized": "\"LeokanilˌAOkˈɑni,\" she said, \"is here.\"",
+   "leokani": "lˌAOkˈɑni, ʃi sˈɛd, ɪz hˈɪɹ.",
+   "without": "lˌAOkˈɑni, ʃi sˈɛd, ɪz hˈɪɹ."
+  },
+  {
+   "text": "Leokani-tts is not Leokani.",
+   "normalized": "Leokani-tts is not LeokanilˌAOkˈɑni.",
+   "leokani": "liˈɑkənits ɪz nˌɑt lˌAOkˈɑni.",
+   "without": "liˈɑkənits ɪz nˌɑt lˌAOkˈɑni."
+  },
+  {
+   "text": "It costs $4.99 at Brandt.",
+   "normalized": "It costs 4 dollars and 99 cents at Brandtbɹˈænt.",
+   "leokani": "ɪt kˈɔsts fˈɔɹ dˈɑləɹz ænd nˈInti nˈIn sˈɛnts æt bɹˈænt.",
+   "without": "ɪt kˈɔsts fˈɔɹ dˈɑləɹz ænd nˈInti nˈIn sˈɛnts æt bɹˈænt."
+  },
+  {
+   "text": "Thibault's, Gauss's and Cholmondeley's.",
+   "normalized": "Thibault'stˈibOz, Gauss'sɡˈWsᵻz and Cholmondeley'sʧˈʌmliz.",
+   "leokani": "tˈibOz, ɡˈWsᵻz ænd ʧˈʌmliz.",
+   "without": "θˈɪbɔlts, ɡˈWsᵻz ænd kˈOməndˌɛliz."
+  },
+  {
+   "text": "Set the AGC to slow.",
+   "normalized": "Set the AˈA G C to slow.",
+   "leokani": "sˈɛt ðɪ ˈA ʤˈi sˈi tə slˈO.",
+   "without": "sˈɛt ðɪ ˌAʤˌisˈi tə slˈO."
+  },
+  {
+   "text": "Is AGC on?",
+   "normalized": "Is AˈA G C on?",
+   "leokani": "ɪz ˈA ʤˈi sˈi ˈɔn?",
+   "without": "ɪz ˌAʤˌisˈi ˈɔn?"
+  }
+ ],
+ "pieces": [
+  {
+   "piece": "leokani and gif",
+   "normalized": "leokanilˌAOkˈɑni and gifʤˈɪf",
+   "leokani": "lˌAOkˈɑni ænd ʤˈɪf"
+  },
+  {
+   "piece": "Siobhan met Jules",
+   "normalized": "shivawn met Julesʤˈulz",
+   "leokani": "ʃˈɪvɔn mˈɛt ʤˈulz"
+  },
+  {
+   "piece": "Gauss's law in nyc",
+   "normalized": "Gauss'sɡˈWsᵻz law in New York City",
+   "leokani": "ɡˈWsᵻz lˈɔ ɪn nˈu jˈɔɹk sˈɪɾi"
+  },
+  {
+   "piece": "the Brandt BBC",
+   "normalized": "the Brandtbɹˈænt B B C",
+   "leokani": "ðə bɹˈænt bˈi bˈi sˈi"
+  }
+ ],
+ "reject": [
+  {
+   "format": "leokani-g2p-user/1",
+   "words": {
+    "two words": "x"
+   }
+  },
+  {
+   "format": "leokani-g2p-user/1",
+   "words": {
+    "x": ""
+   }
+  },
+  {
+   "format": "leokani-g2p-user/1",
+   "words": {
+    "x": "//"
+   }
+  },
+  {
+   "format": "leokani-g2p-user/1",
+   "words": {
+    "x": "/qX/"
+   }
+  },
+  {
+   "format": "leokani-g2p-user/1",
+   "words": {
+    "x": {
+     "phonemes": "a",
+     "say": "b"
+    }
+   }
+  },
+  {
+   "format": "other/1",
+   "words": {}
+  }
+ ]
+}

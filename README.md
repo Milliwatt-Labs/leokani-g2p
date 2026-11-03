@@ -2,11 +2,10 @@
 
 English text to Kokoro-style phonemes, without espeak-ng.
 
-Leokani G2P is a small, fast English phonemizer from [Milliwatt Labs](https://milliwattlabs.com). It produces
-espeak-ng-compatible phonemes (the same Kokoro/misaki-style codes Leokani-tts and Kokoro use). Our own code and
-models, built from scratch; contains no espeak-ng code or data files.
+Leokani G2P is a small, fast English phonemizer from [Milliwatt Labs](https://milliwattlabs.com). It produces espeak compatible phoneme codes, made from the ground up: the same Kokoro/misaki-style codes
+Leokani-tts and Kokoro use. It contains no espeak-ng code or data files.
 
-It needs only `numpy` and `onnxruntime` and about 18 MB of model files, and takes under a millisecond per line on
+It needs only `numpy` and `onnxruntime` and about 19 MB of model files, and takes under a millisecond per line on
 one CPU thread. The code is MIT and the model files are CC BY 4.0, so you can use it in commercial products with
 attribution.
 
@@ -14,6 +13,15 @@ attribution.
 $ leokani-g2p "Dr. Okafor lands at 7:45 AM."
 dˈɑktəɹ ˈɑkæfəɹ lˈændz æt sˈɛvən fˈɔɹɾi fˈIv ˌAˈɛm.
 ```
+
+## Two sizes
+
+| variant | letter-to-sound params | files | |
+| --- | ---: | ---: | --- |
+| `micro` (default) | 2.22M | 19.0 MB | the same size as v1.0 |
+| `mini` | 2.94M | 21.8 MB | better on names and rare words |
+
+Both ship in the package; pick one with `variant="mini"` or `--variant mini`.
 
 ## Install
 
@@ -46,10 +54,45 @@ leokani_g2p.phonemize_chunks("A long paragraph. Of several clauses.")
 g2p = leokani_g2p.load(threads=1)       # load once, reuse
 g2p.phonemize("Hello there.")
 g2p.piece("the wind was cold")           # one clause with no punctuation, no chunking
+
+mini = leokani_g2p.load(variant="mini")  # the larger model
 ```
 
 Numbers, money, dates, times, units, phone numbers, emails, web addresses and versions are written out as words
 before conversion (`"$4.99"` is read as "4 dollars and 99 cents").
+
+## Custom pronunciations
+
+Names, brands and places the lexicon gets wrong: give phonemes, or a respelling that is read as text. They are
+checked before the lexicon and every text rule, and possessives follow ("Siobhan's").
+
+```python
+g2p.add_pronunciation("Leokani", phonemes="lˌAOkˈɑni")
+g2p.add_pronunciation("Siobhan", say="shivawn")
+g2p.load_user_lexicon("names.tsv")       # or .json; also LeokaniG2P(user_lexicon=...)
+```
+
+```bash
+leokani-g2p --lexicon names.tsv "Siobhan met Aoife."
+```
+
+The rules and the JSON/TSV formats: [USER-LEXICON.md](USER-LEXICON.md).
+
+## JavaScript
+
+Browsers and Node 20+, from the [`js/`](js/) folder (npm package `leokani-g2p`). Same output as the Python
+package: it reproduces `tests/goldens.json` exactly.
+
+```js
+import { load } from 'leokani-g2p';
+
+const g2p = await load({ userLexicon: { Siobhan: 'shivawn' } });
+await g2p.phonemize('Siobhan lands at 7:45 AM.');
+```
+
+See [js/README.md](js/README.md) for bundlers, Workers and the command line, and
+[js/USER-LEXICON.md](js/USER-LEXICON.md) for custom pronunciations (the same rules as
+[USER-LEXICON.md](USER-LEXICON.md)).
 
 ## With Kokoro
 
@@ -92,18 +135,22 @@ Try Leokani-tts in your browser: [Leokani-tts 7M on Hugging Face Spaces](https:/
 
 ## Accuracy
 
-How often Leokani G2P's output is identical to espeak-ng's (commit 8269af04, American English, in Kokoro's codes
-through misaki 0.9.4's mapping), on test text held out from building the model:
+How often Leokani G2P reads test text held out from building the model the same as the reference (American
+English, Kokoro's codes). Sentence references are espeak-ng's output (commit 8269af04, through misaki 0.9.4's
+mapping); the letters and same-spelling rows use our own reference readings. Those last three tests are new in 1.2.
 
-| test | lines | identical sentences | phoneme error |
+| test | v1.0 | 1.2 micro (default) | 1.2 mini |
 | --- | ---: | ---: | ---: |
-| held-out sentences (five test sets) | 1,940 | 99.07 % | 0.12 % |
-| hard cases: numbers, money, units, abbreviations, web text | 500 | 98.6 % | 2.23 % |
-| sentences built around unseen names | 577 | 83.36 % | 1.40 % |
-| all | 3,017 | 95.99 % | 0.46 % |
+| held-out sentences, five test sets (1,940), apart from text read differently on purpose | 99.28 % | 99.33 % | 99.33 % |
+| sentences built around unseen names (577) | 83.36 % | 91.33 % | 93.07 % |
+| more sentences with unseen names (600) | 70.5 % | 85.0 % | 87.5 % |
+| unseen rare words | 72.1 % | 80.1 % | 81.1 % |
+| numbers, units, web addresses, abbreviations (165) | — | 78.2 % | 78.2 % |
+| spelled-out letters and initialisms (148) | — | 88.5 % | 88.5 % |
+| words spelled the same but said differently (213) | — | 87.3 % | 87.3 % |
 
-Rare words that aren't in the lexicon are the weak spot: 71.8 % of unseen rare words come out the same as
-espeak-ng's, which is why names score lower.
+Rare words that aren't in the lexicon are the weak spot, which is why names score lower. Mini is the better
+choice for text full of names; on everyday sentences the two give the same output.
 
 ## Size and speed
 
@@ -111,7 +158,8 @@ espeak-ng's, which is why names score lower.
 | --- | ---: | ---: |
 | `context.onnx`: how each word is said in its clause | 1.34M | 5.4 MB |
 | `oov-encoder.onnx` + `oov-decoder.onnx`: letter-to-sound for words outside the lexicon | 2.22M | 9.0 MB |
-| `leokani-g2p.json.gz`: lexicon, weak forms, number words | | 3.7 MB |
+| `leokani-g2p.json.gz`: lexicon, weak forms, number words | | 4.7 MB |
+| `mini/`: the same four files for the mini variant | 2.94M + 1.34M | 21.8 MB |
 
 On one CPU thread with the per-word cache warm: 0.26 ms per line on everyday sentences, about 0.6 ms on text full
 of numbers, units and abbreviations (Apple M3 Pro).
@@ -142,7 +190,8 @@ pytest tests
 - Model weights (`*.onnx`), the lexicon (`leokani-g2p.json.gz`) and `tests/goldens.json`:
   [CC BY 4.0](LICENSE-CC-BY-4.0.txt).
 
-Credit it as: **Leokani G2P by Milliwatt Labs (milliwattlabs.com)**. Place names in the lexicon come from
+Credit it as: **Leokani G2P by Milliwatt Labs (milliwattlabs.com)**. The lexicon's word list includes words
+from the [CMU Pronouncing Dictionary](https://github.com/cmusphinx/cmudict) (BSD-2-Clause) and place names from
 [GeoNames](https://www.geonames.org) (CC BY 4.0). The phoneme codes are those of
 [misaki](https://github.com/hexgrad/misaki) and [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) by
 hexgrad (Apache-2.0). See [NOTICE](NOTICE) for every credit.

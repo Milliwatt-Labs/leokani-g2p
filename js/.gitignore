@@ -1,0 +1,6 @@
+node_modules/
+models/
+*.tgz
+LICENSE
+LICENSE-CC-BY-4.0.txt
+NOTICE

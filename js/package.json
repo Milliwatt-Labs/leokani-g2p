@@ -1,0 +1,78 @@
+{
+  "name": "leokani-g2p",
+  "version": "1.2.0",
+  "description": "English text to espeak compatible phoneme codes, in browsers and Node. Made from the ground up; contains no espeak-ng code or data files.",
+  "type": "module",
+  "license": "MIT AND CC-BY-4.0",
+  "author": "Milliwatt Labs (https://milliwattlabs.com)",
+  "homepage": "https://github.com/Milliwatt-Labs/leokani-g2p",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Milliwatt-Labs/leokani-g2p.git",
+    "directory": "js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "node": "./src/node.mjs",
+      "default": "./src/index.mjs"
+    },
+    "./models/*": "./models/*",
+    "./package.json": "./package.json"
+  },
+  "main": "./src/node.mjs",
+  "browser": "./src/index.mjs",
+  "types": "./src/index.d.ts",
+  "bin": {
+    "leokani-g2p": "./bin/leokani-g2p.mjs"
+  },
+  "sideEffects": false,
+  "files": [
+    "src/",
+    "bin/",
+    "models/",
+    "examples/",
+    "USER-LEXICON.md",
+    "LICENSE",
+    "LICENSE-CC-BY-4.0.txt",
+    "NOTICE",
+    "README.md"
+  ],
+  "dependencies": {
+    "onnxruntime-web": "1.31.1"
+  },
+  "peerDependencies": {
+    "onnxruntime-node": ">=1.20.0 <2"
+  },
+  "peerDependenciesMeta": {
+    "onnxruntime-node": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "models": "node scripts/models.mjs",
+    "prepack": "node scripts/models.mjs --check",
+    "test": "node test/unit.mjs && node test/types.mjs && node test/goldens.mjs && node test/user-lexicon.mjs",
+    "test:goldens": "node test/goldens.mjs",
+    "test:browser": "node test/browser.mjs",
+    "types": "node test/types.mjs"
+  },
+  "keywords": [
+    "g2p",
+    "phonemizer",
+    "text-to-speech",
+    "tts",
+    "kokoro",
+    "espeak-ng",
+    "ipa",
+    "wasm",
+    "onnx"
+  ],
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3"
+  }
+}

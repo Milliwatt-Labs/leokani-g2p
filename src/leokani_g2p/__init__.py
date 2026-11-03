@@ -7,21 +7,28 @@
     leokani_g2p.phonemize_chunks("One clause. And another.")    # -> one string per clause chunk
 
     g2p = leokani_g2p.LeokaniG2P()                              # load once, call many times
+    mini = leokani_g2p.load(variant="mini")                     # the larger model: better on names and rare words
     g2p.phonemize("Hello there.")
+
+    leokani_g2p.add_pronunciation("Siobhan", say="shivawn")     # custom pronunciations (USER-LEXICON.md)
+    leokani_g2p.add_pronunciation("Leokani", phonemes="lˌAOkˈɑni")
 """
 from __future__ import annotations
 
-from .runtime import FORMAT, HERE, LeokaniG2P
+from .runtime import DEFAULT_VARIANT, FORMAT, HERE, VARIANTS, LeokaniG2P, UserLexicon
 
-__version__ = "1.0.0"
-__all__ = ["LeokaniG2P", "FORMAT", "load", "phonemize", "phonemize_chunks", "__version__"]
+__version__ = "1.2.0"
+__all__ = ["LeokaniG2P", "UserLexicon", "FORMAT", "VARIANTS", "DEFAULT_VARIANT", "load", "phonemize", "phonemize_chunks", "add_pronunciation",
+           "load_user_lexicon", "__version__"]
 
 _default: LeokaniG2P | None = None
 
 
-def load(model_dir: str | None = None, threads: int = 1) -> LeokaniG2P:
-    """A new LeokaniG2P. model_dir: a folder with leokani-g2p.json.gz and the .onnx files (default: the package's)."""
-    return LeokaniG2P(model_dir or HERE, threads)
+def load(model_dir: str | None = None, threads: int = 1, user_lexicon=None, variant: str | None = None) -> LeokaniG2P:
+    """A new LeokaniG2P. variant: "micro" (default) or "mini". model_dir: a folder with leokani-g2p.json.gz and the
+    .onnx files (default: the package's). user_lexicon: custom pronunciations, a .json or .tsv path, a dict or a
+    UserLexicon."""
+    return LeokaniG2P(model_dir or HERE, threads, user_lexicon=user_lexicon, variant=variant)
 
 
 def _model() -> LeokaniG2P:
@@ -39,3 +46,14 @@ def phonemize(text: str) -> str:
 def phonemize_chunks(text: str) -> list[str]:
     """A line or paragraph -> phonemes, one string per clause chunk."""
     return _model().phonemize_chunks(text)
+
+
+def add_pronunciation(word: str, value=None, *, phonemes: str | None = None, say: str | None = None) -> None:
+    """A custom pronunciation for phonemize(): add_pronunciation("gif", phonemes="ʤˈɪf"),
+    add_pronunciation("Siobhan", say="shivawn"), or a value "/phonemes/" or a respelling."""
+    _model().add_pronunciation(word, value, phonemes=phonemes, say=say)
+
+
+def load_user_lexicon(path: str) -> None:
+    """Add the custom pronunciations in a .json or .tsv file to phonemize()."""
+    _model().load_user_lexicon(path)

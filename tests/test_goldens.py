@@ -10,32 +10,52 @@ import pytest
 
 import leokani_g2p
 
-GOLD = json.loads((Path(__file__).parent / "goldens.json").read_text(encoding="utf-8"))
+HERE = Path(__file__).parent
+GOLD = json.loads((HERE / "goldens.json").read_text(encoding="utf-8"))                 # micro, the default
+GOLDS = {"micro": GOLD, "mini": json.loads((HERE / "goldens-mini.json").read_text(encoding="utf-8"))}
+_models: dict = {}
 
 
-@pytest.fixture(scope="module")
-def g2p():
-    return leokani_g2p.load()
+def model(variant):
+    if variant not in _models:
+        _models[variant] = leokani_g2p.load(variant=variant)
+    return _models[variant]
 
 
-def test_format(g2p):
-    assert GOLD["format"] == leokani_g2p.FORMAT == g2p.doc["format"]
+def cases(key):
+    return [pytest.param(v, g, id=f"{v}-{g['piece'][:40] if key == 'pieces' else g['id']}")
+            for v, gold in GOLDS.items() for g in (gold[key] if key == "pieces" else gold["lines"] + gold["edge"])]
 
 
-@pytest.mark.parametrize("g", GOLD["pieces"], ids=lambda g: g["piece"][:40])
-def test_pieces(g2p, g):
+@pytest.mark.parametrize("variant", list(GOLDS))
+def test_format(variant):
+    assert GOLDS[variant]["format"] == leokani_g2p.FORMAT == model(variant).doc["format"]
+    assert GOLDS[variant].get("variant", variant) == variant == model(variant).variant
+
+
+@pytest.mark.parametrize("variant,g", cases("pieces"))
+def test_pieces(variant, g):
+    g2p = model(variant)
     assert g2p.normalize(g["piece"], pauses=False) == g["normalized"]
     assert g2p.piece(g["piece"]) == g["leokani"]
 
 
-@pytest.mark.parametrize("g", GOLD["lines"] + GOLD["edge"], ids=lambda g: g["id"])
-def test_lines(g2p, g):
+@pytest.mark.parametrize("variant,g", cases("lines"))
+def test_lines(variant, g):
+    g2p = model(variant)
     assert g2p.normalize(g["text"]) == g["normalized"]
     assert g2p.phonemize(g["text"]) == g["leokani"]
 
 
 def test_counts():
-    assert min(len(GOLD["pieces"]), len(GOLD["lines"]), len(GOLD["edge"])) > 100
+    for gold in GOLDS.values():
+        assert min(len(gold["pieces"]), len(gold["lines"]), len(gold["edge"])) > 100
+
+
+def test_variants_differ():
+    assert model("micro").doc["lexicon"] is not model("mini").doc["lexicon"]
+    with pytest.raises(ValueError):
+        leokani_g2p.load(variant="huge")
 
 
 def test_module_api():
@@ -56,3 +76,5 @@ def test_cli():
     assert j["phonemes"] == g["leokani"]
     p = GOLD["pieces"][0]
     assert run("--piece", p["piece"]).stdout == p["leokani"] + "\n"
+    m = GOLDS["mini"]["edge"][0]
+    assert run("--variant", "mini", m["text"]).stdout == m["leokani"] + "\n"

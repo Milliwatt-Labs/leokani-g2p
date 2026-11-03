@@ -6,6 +6,7 @@
     leokani-g2p < book.txt                    # one output line per input line
     leokani-g2p --chunks "A long line. With clauses."
     leokani-g2p --json "It costs $4.99."
+    leokani-g2p --lexicon names.tsv "Siobhan met Aoife."
 """
 from __future__ import annotations
 
@@ -15,7 +16,7 @@ import sys
 
 
 def main(argv: list[str] | None = None) -> int:
-    from . import HERE, LeokaniG2P, __version__
+    from . import DEFAULT_VARIANT, HERE, VARIANTS, LeokaniG2P, __version__
 
     ap = argparse.ArgumentParser(prog="leokani-g2p", description="English text to Kokoro-style phonemes.")
     ap.add_argument("text", nargs="*", help="text to convert (default: read lines from stdin)")
@@ -23,15 +24,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--piece", action="store_true", help="treat each input as one clause with no punctuation")
     ap.add_argument("--json", action="store_true", help="one JSON object per input line")
     ap.add_argument("--model", default=HERE, help="folder with leokani-g2p.json.gz and the .onnx files")
+    ap.add_argument("--variant", choices=list(VARIANTS), default=DEFAULT_VARIANT, help="model size (default micro)")
+    ap.add_argument("--lexicon", action="append", default=[], metavar="FILE",
+                    help="custom pronunciations, .json or .tsv (repeatable)")
     ap.add_argument("--threads", type=int, default=1, help="ONNX Runtime threads (default 1)")
     ap.add_argument("--version", action="version", version=f"leokani-g2p {__version__}")
     a = ap.parse_args(argv)
 
     try:
-        g2p = LeokaniG2P(a.model, a.threads)
+        g2p = LeokaniG2P(a.model, a.threads, variant=a.variant)
     except (OSError, SystemExit) as e:
         print(f"leokani-g2p: can't load the model from {a.model}: {e}", file=sys.stderr)
         return 1
+    for path in a.lexicon:
+        try:
+            g2p.load_user_lexicon(path)
+        except (OSError, ValueError) as e:
+            print(f"leokani-g2p: {path}: {e}", file=sys.stderr)
+            return 1
 
     lines = [" ".join(a.text)] if a.text else (ln.rstrip("\n") for ln in sys.stdin)
     out = sys.stdout
