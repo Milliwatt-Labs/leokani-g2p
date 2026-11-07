@@ -1,6 +1,6 @@
 # Custom pronunciations (user lexicon)
 
-Leokani G2P 1.1 lets you fix how a word is said: a brand, a person, a place. Every port (Python, C,
+Leokani G2P lets you fix how a word is said: a brand, a person, a place. Every port (Python, C,
 JavaScript, Swift) reads the same files and gives the same output; `user-lexicon-goldens.json` is the parity
 file they all check.
 
@@ -9,7 +9,7 @@ file they all check.
 A key is one token (no spaces). A value is either:
 
 - **phonemes**, written `/like this/` (or `{"phonemes": "..."}` in JSON), using the release's symbols
-  (`outSymbols` in `leokani-g2p.json.gz`, plus `ˈ` and `ˌ`);
+  (`outSymbols` in the tables of `leokani-g2p.data`, plus `ˈ` and `ˌ`);
 - a **respelling**, plain text (or `{"say": "..."}`), read as if it were written in the line instead.
 
 ```json
@@ -19,6 +19,7 @@ A key is one token (no spaces). A value is either:
     "Leokani": "/lˌAOkˈɑni/",
     "Siobhan": "shivawn",
     "BBC": {"say": "B B C"},
+    "AGC": {"say": "A G C"},
     "gif": {"phonemes": "ʤˈɪf"}
   }
 }
@@ -31,6 +32,7 @@ The same entries as TSV (key, a tab, the value; blank lines and `#` lines are sk
 Leokani	/lˌAOkˈɑni/
 Siobhan	shivawn
 BBC	B B C
+AGC	A G C
 gif	/ʤˈɪf/
 ```
 
@@ -44,7 +46,8 @@ gif	/ʤˈɪf/
    after p t k f θ, else `z`; a respelling gets `'s`. `James'` falls back to `James` with nothing added.
 4. **Phonemes** become the word's pronunciation; the word still takes part in the sentence's linking and stress.
 5. **Respellings** go through the normal rules, lexicon and letter-to-sound model, so `C++` → `C plus plus`
-   works. A respelling's words are not looked up in the user lexicon again.
+   works, and `A G C` is spelled letter by letter. A respelling's words are not looked up in the user
+   lexicon again.
 6. Later entries replace earlier ones with the same key. Loading is all or nothing: a bad entry (two words,
    empty value, unknown phoneme symbol, a file that isn't `leokani-g2p-user/1`) rejects the file.
 

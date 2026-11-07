@@ -17,7 +17,7 @@ and needs no server.
 npm i leokani-g2p
 ```
 
-The model files are in the package's `models/` folder: micro (the default, 19 MB) at the top and mini (21.8 MB,
+The model files are in the package's `models/` folder: micro (the default, 10.2 MB, 4.9 MB with Brotli) at the top and mini (10.8 MB,
 better on names and rare words) in `models/mini/`. Pass `load({ variant: 'mini' })` for mini. The files are read when you call `load()`, not when you import the package.
 
 ## Quick start
@@ -33,7 +33,7 @@ await g2p.phonemizeChunks('A long paragraph. Of several clauses.');
 // ['ə lˈɔŋ pˈæɹəɡɹˌæf.', 'ʌv sˈɛvɹᵊl klˈɔzᵻz.']
 
 await g2p.piece('the wind was cold');   // one clause with no punctuation
-g2p.normalize('It costs $4.99.');       // 'It costs 4 dollars and 99 cents.'
+await g2p.normalizeAsync('It costs $4.99.');   // 'It costs 4 dollars and 99 cents.'
 ```
 
 Or without managing an instance (the model loads on the first call):
@@ -95,7 +95,8 @@ The format is the same in every Leokani G2P port. [USER-LEXICON.md](USER-LEXICON
 | `phonemize(text)` | A line or paragraph → one phoneme string. |
 | `phonemizeChunks(text)` | → one phoneme string per clause chunk. Kokoro takes up to 510 phoneme characters at a time, so pass it one chunk at a time. |
 | `piece(clause)` | One clause with no punctuation → phonemes. |
-| `normalize(text)` | The text as it will be read, with numbers and symbols written out. |
+| `normalizeAsync(text)` | The text as it will be read, with numbers and symbols written out. |
+| `normalize(text)` | The same, synchronous: it throws (`NeedOov`) on an all-caps word like "NBA" until the letter-to-sound model has said it, so prefer `normalizeAsync`. |
 | `addPronunciation(word, value)`, `removePronunciation(word)`, `loadUserLexicon(source)` | Custom pronunciations. |
 | `dispose()` | Frees the inference sessions. |
 
@@ -103,10 +104,11 @@ The format is the same in every Leokani G2P port. [USER-LEXICON.md](USER-LEXICON
 
 | file | |
 |---|---|
-| `leokani-g2p.json.gz` | lexicon, weak forms, number words |
+| `leokani-g2p.data` | weak forms, number words, the most common words |
+| `leokani-g2p-words.data` | every other lexicon word |
 | `oov-encoder.onnx`, `oov-decoder.onnx` | letter-to-sound for words outside the lexicon |
 | `context.onnx` | how each word is said in its clause |
-| `mini/` | the same four files for the mini variant |
+| `mini/` | the same five files for the mini variant |
 
 To serve them from your own host or CDN, copy `node_modules/leokani-g2p/models/` and pass `modelBase`. They are
 also on Hugging Face: [milliwattlabs/leokani-g2p](https://huggingface.co/milliwattlabs/leokani-g2p).
@@ -147,7 +149,7 @@ npm run test:browser     # the same goldens in headless Chrome: page, Worker, es
 ## License
 
 - Code: [MIT](LICENSE).
-- Model weights (`*.onnx`), the lexicon (`leokani-g2p.json.gz`) and the goldens: [CC BY 4.0](LICENSE-CC-BY-4.0.txt).
+- Model weights (`*.onnx`), the lexicon (`leokani-g2p.data`, `leokani-g2p-words.data`) and the goldens: [CC BY 4.0](LICENSE-CC-BY-4.0.txt).
 
 Credit it as: **Leokani G2P by Milliwatt Labs (milliwattlabs.com)**. The lexicon's word list includes words
 from the [CMU Pronouncing Dictionary](https://github.com/cmusphinx/cmudict) (BSD-2-Clause) and place names from

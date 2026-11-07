@@ -53,7 +53,7 @@ def test_counts():
 
 
 def test_variants_differ():
-    assert model("micro").doc["lexicon"] is not model("mini").doc["lexicon"]
+    assert model("micro").lexicon is not model("mini").lexicon
     with pytest.raises(ValueError):
         leokani_g2p.load(variant="huge")
 
@@ -78,3 +78,12 @@ def test_cli():
     assert run("--piece", p["piece"]).stdout == p["leokani"] + "\n"
     m = GOLDS["mini"]["edge"][0]
     assert run("--variant", "mini", m["text"]).stdout == m["leokani"] + "\n"
+
+
+def test_lazy():
+    """lazy=True: the tables and common words first, the rest only when a piece needs them, same output."""
+    g2p = leokani_g2p.load(lazy=True)
+    assert g2p.loaded() == []
+    assert g2p.phonemize("The cat sat.") == model("micro").phonemize("The cat sat.")
+    g = GOLD["edge"][0]
+    assert g2p.phonemize(g["text"]) == g["leokani"]

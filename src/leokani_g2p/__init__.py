@@ -17,18 +17,19 @@ from __future__ import annotations
 
 from .runtime import DEFAULT_VARIANT, FORMAT, HERE, VARIANTS, LeokaniG2P, UserLexicon
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 __all__ = ["LeokaniG2P", "UserLexicon", "FORMAT", "VARIANTS", "DEFAULT_VARIANT", "load", "phonemize", "phonemize_chunks", "add_pronunciation",
            "load_user_lexicon", "__version__"]
 
 _default: LeokaniG2P | None = None
 
 
-def load(model_dir: str | None = None, threads: int = 1, user_lexicon=None, variant: str | None = None) -> LeokaniG2P:
-    """A new LeokaniG2P. variant: "micro" (default) or "mini". model_dir: a folder with leokani-g2p.json.gz and the
+def load(model_dir: str | None = None, threads: int = 1, user_lexicon=None, variant: str | None = None,
+         lazy: bool = False) -> LeokaniG2P:
+    """A new LeokaniG2P. variant: "micro" (default) or "mini". model_dir: a folder with the .data and
     .onnx files (default: the package's). user_lexicon: custom pronunciations, a .json or .tsv path, a dict or a
-    UserLexicon."""
-    return LeokaniG2P(model_dir or HERE, threads, user_lexicon=user_lexicon, variant=variant)
+    UserLexicon. lazy: read the rare-word file and start each model only when a piece first needs it."""
+    return LeokaniG2P(model_dir or HERE, threads, user_lexicon=user_lexicon, variant=variant, lazy=lazy)
 
 
 def _model() -> LeokaniG2P:

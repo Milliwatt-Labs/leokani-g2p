@@ -25,10 +25,10 @@ for (const f of run.files) {
   if (gold.variant && gold.variant !== g2p.variant) { console.log(`${f}: goldens for ${gold.variant}, model ${g2p.variant}`); fails++; continue; }
   if (gold.format !== 'leokani-g2p/1') { console.log(`${f}: format ${gold.format}`); fails++; continue; }
   const name = String(f).split('/').slice(-3).join('/');
-  let n = 0; let bad = 0; const t = Date.now();
+  let n = 0; let bad = 0; let syncThrew = 0; const t = Date.now();
   for (const g of gold.pieces) {
     n++;
-    const norm = g2p.normalize(g.piece, false);
+    const norm = await g2p.normalizeAsync(g.piece, false);
     const ph = await g2p.piece(g.piece);
     if (norm !== g.normalized || ph !== g.leokani) {
       bad++;
@@ -37,14 +37,20 @@ for (const f of run.files) {
   }
   for (const g of [...gold.lines, ...gold.edge]) {
     n++;
-    const norm = g2p.normalize(g.text);
+    // the synchronous normalize may throw NeedWords or NeedOov before the line has been read (an all-caps word the
+    // letter-to-sound model says), never anything else; after normalizeAsync it must give the same string
+    let before = null;
+    try { before = g2p.normalize(g.text); } catch (e) { if (e?.name !== 'NeedOov' && e?.name !== 'NeedWords') throw e; syncThrew++; }
+    const norm = await g2p.normalizeAsync(g.text);
     const ph = await g2p.phonemize(g.text);
+    const after = g2p.normalize(g.text);
+    if ((before !== null && before !== norm) || after !== norm) { bad++; console.log(`FAIL ${g.id} sync normalize ${JSON.stringify(before)} / ${JSON.stringify(after)}`); continue; }
     if (norm !== g.normalized || ph !== g.leokani) {
       bad++;
       console.log(`FAIL ${g.id} ${JSON.stringify(g.text)}\n  normalized ${JSON.stringify(show(norm))}\n  expected   ${JSON.stringify(show(g.normalized))}\n  leokani    ${ph}\n  expected   ${g.leokani}`);
     }
   }
-  console.log(`${name}: ${n - bad}/${n} exact (pieces ${gold.pieces.length}, lines ${gold.lines.length}, edge ${gold.edge.length}) in ${Date.now() - t} ms`);
+  console.log(`${name}: ${n - bad}/${n} exact (pieces ${gold.pieces.length}, lines ${gold.lines.length}, edge ${gold.edge.length}; sync normalize waited on the model for ${syncThrew}) in ${Date.now() - t} ms`);
   fails += bad; total += n;
 }
 await g2p.dispose();

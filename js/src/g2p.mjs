@@ -15,9 +15,10 @@ import {
 import { Normalizer, PH, PRIMARY, SECONDARY } from './normalize.mjs';
 import { Numbers, VOWELS } from './numbers.mjs';
 import { UserLexicon } from './userlex.mjs';
+import { Lexicon, NeedWords, NeedOov } from './data.mjs';
 
 export const FORMAT = 'leokani-g2p/1';
-export const VERSION = '1.2.0';
+export const VERSION = '1.3.0';
 
 const STRESS_OPS = ['same', 'demote', 'strip', 'promote1', 'demote1', 'demoteLast', 'promote'];
 const N_VARIANTS = 6;
@@ -152,12 +153,20 @@ const argmax = (arr, off, len) => {
  * three onnxruntime InferenceSessions.
  */
 export class LeokaniG2P {
-  constructor(doc, { ort, encoder, decoder, context, userLexicon = null }) {
+  /**
+   * doc: the tables (leokani-g2p.data's JSON, or a 1.2 leokani-g2p.json.gz document with its lexicon).
+   * lexicon: a Lexicon (data.mjs) for 1.3 files. encoder/decoder/context: InferenceSessions, or omit them and give
+   * loader: { session(name) -> Promise<InferenceSession>, words() -> Promise<WordTable> } to start each part on
+   * first use (lazy loading).
+   */
+  constructor(doc, { ort, encoder = null, decoder = null, context = null, userLexicon = null, lexicon = null, loader = null }) {
     if (doc.format !== FORMAT) throw new Error(`not a ${FORMAT} file`);
     this.doc = doc;
     this.ort = ort;
-    this.enc = encoder; this.dec = decoder; this.ctx = context;
-    this.lexicon = new Map(Object.entries(doc.lexicon));
+    this.loader = loader;
+    this._sessions = { encoder, decoder, context };
+    this._pending = {};
+    this.lexicon = lexicon || new Lexicon(new Map(Object.entries(doc.lexicon)), new Map());
     this.cased = new Map(Object.entries(doc.cased));
     this.variants = new Map(Object.entries(doc.variants));
     this.wordIds = new Map(doc.contextWords.map((w, i) => [w, i + 2]));
@@ -175,7 +184,7 @@ export class LeokaniG2P {
       letters,
       cased: (w) => this.cased.has(w),
       common: (w) => this.wordIds.has(w),
-      reading: (w) => [...(this.lexicon.has(w) ? [this.lexicon.get(w)] : []), ...(this.variants.get(w) || [])],
+      reading: (w) => [...(this.lexicon.has(w) ? [this._lex(w)] : []), ...(this.variants.get(w) || [])],
     });
     this.maxOut = Number(doc.oov.maxOut);
     this.cache = new Map();
@@ -183,6 +192,44 @@ export class LeokaniG2P {
     this.userLexicon = new UserLexicon(null, { symbols: new Set([...this.outSyms, PRIMARY, SECONDARY]) });
     this.normalizer.user = this.userLexicon;
     if (userLexicon) this.userLexicon.update(userLexicon);
+  }
+
+  // ---- the parts, started on first use when lazy
+  async _session(name) {
+    if (this._sessions[name]) return this._sessions[name];
+    if (!this.loader) throw new Error(`no ${name} model`);
+    this._pending[name] ||= this.loader.session(name).then((s) => { this._sessions[name] = s; return s; });
+    return this._pending[name];
+  }
+
+  async _words() {
+    if (this.lexicon.loaded) return;
+    this._pending.words ||= this.loader.words().then((t) => { this.lexicon.rest = t; });
+    await this._pending.words;
+  }
+
+  /** Run fn, loading the other-words file and retrying when a look-up needs it. */
+  async _lazy(fn) {
+    for (;;) {
+      try {
+        return await fn();
+      } catch (e) {
+        if (e instanceof NeedOov) await this.oov([e.word]);
+        else if (e instanceof NeedWords && !this.lexicon.loaded) await this._words();
+        else throw e;
+      }
+    }
+  }
+
+  /** Read the rest now: the other-words file and the three models (load({ lazy: true }) defers them). */
+  async loadAll() {
+    await Promise.all([this._words(), ...['encoder', 'decoder', 'context'].map((k) => this._session(k))]);
+    return this;
+  }
+
+  /** Which parts are in memory: 'words' (the other-words file) and the models ('encoder', 'decoder', 'context'). */
+  loaded() {
+    return [...(this.lexicon.loaded ? ['words'] : []), ...['encoder', 'decoder', 'context'].filter((k) => this._sessions[k])];
   }
 
   // ---- custom pronunciations
@@ -197,23 +244,40 @@ export class LeokaniG2P {
   }
 
   // ---- bases
+  /** The lexicon's phonemes for lowercase lw (which it has); a word the letter-to-sound model says comes from
+   * its cache, or throws NeedOov (the async methods catch it, run the model and retry). */
+  _lex(lw) {
+    const v = this.lexicon.get(lw);
+    if (v !== null) return v;
+    if (this.cache.has(lw)) return this.cache.get(lw);
+    throw new NeedOov(lw);
+  }
+
   _word(w) {
     const c = this.cased.get(w);
     if (c) return c;
-    const l = this.lexicon.get(lower(w));
-    return l === undefined ? null : l;
+    const lw = lower(w);
+    return this.lexicon.has(lw) ? this._lex(lw) : null;
   }
 
-  /** A line as a person reads it (numbers, money, dates, abbreviations, ...). */
+  /** A line as a person reads it (numbers, money, dates, abbreviations, ...). Lazy loading: see normalizeAsync. */
   normalize(text, pauses = true) {
     return this.normalizer.normalize(text, pauses);
+  }
+
+  /** normalize, reading the other-words file first if the line needs it (lazy loading). */
+  async normalizeAsync(text, pauses = true) {
+    return this._lazy(() => this.normalizer.normalize(text, pauses));
   }
 
   async base(w) {
     if (w.includes(PH)) return [split1(w, PH)[1], 'lexicon'];
     if (this.cased.has(w)) return [this.cased.get(w), 'lexicon'];
     const lw = lower(w);
-    if (this.lexicon.has(lw)) return [this.lexicon.get(lw), 'lexicon'];
+    if (this.lexicon.has(lw)) {
+      const v = this.lexicon.get(lw);
+      return [v === null ? (await this.oov([lw]))[0] : v, 'lexicon'];
+    }
     if (anyDigit(w)) {
       const said = this.numbers.say(w);
       if (said !== null) return [said, 'number'];
@@ -254,13 +318,14 @@ export class LeokaniG2P {
       ids.forEach((v, k) => { x[i * L + k] = BigInt(v); });
     });
     const chars = new Tensor('int64', x, [B, L]);
-    const { memory } = await this.enc.run({ chars });
+    const enc = await this._session('encoder'); const dec = await this._session('decoder');
+    const { memory } = await enc.run({ chars });
     let T = 1;
     let y = new BigInt64Array(B).fill(2n);              // BOS
     const done = new Array(B).fill(false);
     for (let step = 0; step < this.maxOut; step++) {
       const prev = new Tensor('int64', y, [B, T]);
-      const { logits } = await this.dec.run({ memory, chars, prev });
+      const { logits } = await dec.run({ memory, chars, prev });
       const V = logits.dims[2]; const data = logits.data;
       const next = new BigInt64Array(B * (T + 1));
       for (let i = 0; i < B; i++) {
@@ -296,9 +361,13 @@ export class LeokaniG2P {
 
   /** -> {phonemes, forms, joins, sources}. */
   async pieceWords(piece) {
+    return this._lazy(() => this._pieceWords(piece));
+  }
+
+  async _pieceWords(piece) {
     let words = this.normalize(piece, false).split(' ').filter((w) => w);
     if (!words.length) return { phonemes: '', forms: [], joins: [], sources: [] };
-    const need = words.filter((w) => this._needsOov(w));
+    const need = [...words.filter((w) => this._needsOov(w)), ...words.map((w) => this._derived(w)).filter((w) => w)];
     if (need.length) await this.oov([...new Set(need)].sort(cmpCp));
     const bases = []; const srcs = [];
     for (const w of words) { const [b, s] = await this.base(w); bases.push(b); srcs.push(s); }
@@ -306,7 +375,7 @@ export class LeokaniG2P {
     words = words.map((w) => w.split(PH)[0]);
     const n = words.length;
     const feats = new this.ort.Tensor('int64', features(words, bases, srcs, this.wordIds, this.symIds), [1, n, N_FEATURES]);
-    const { form, join } = await this.ctx.run({ features: feats });
+    const { form, join } = await (await this._session('context')).run({ features: feats });
     const F = form.dims[2]; const fd = form.data; const jd = join.data;
     const forms = [];
     for (let i = 0; i < n; i++) {
@@ -324,6 +393,15 @@ export class LeokaniG2P {
     return { phonemes: assemble(forms, joins), forms, joins, sources: srcs };
   }
 
+  /** The lowercase key, when w's base is a lexicon word the letter-to-sound model says (batched with the rest). */
+  _derived(w) {
+    if (w.includes(PH) || this.cased.has(w)) return null;
+    const r = rstrip(w, '.');
+    if (w.endsWith('.') && r && !r.includes('.')) w = r;
+    const lw = lower(w);
+    return this.lexicon.has(lw) && this.lexicon.get(lw) === null && !this.cache.has(lw) ? lw : null;
+  }
+
   _needsOov(w) {
     const r = rstrip(w, '.');
     if (w.endsWith('.') && r && !r.includes('.')) w = r;
@@ -336,7 +414,7 @@ export class LeokaniG2P {
   /** A line or paragraph -> phonemes, one string per clause chunk (the unit Leokani-tts speaks). */
   async phonemizeChunks(text) {
     const out = [];
-    for (const c of chunks(clean(this.normalize(text)))) out.push(await line(c, this));
+    for (const c of chunks(clean(await this.normalizeAsync(text)))) out.push(await line(c, this));
     return out;
   }
 
@@ -346,7 +424,7 @@ export class LeokaniG2P {
   }
 
   async dispose() {
-    for (const s of [this.enc, this.dec, this.ctx]) await s?.release?.();
+    for (const s of Object.values(this._sessions)) await s?.release?.();
   }
 }
 

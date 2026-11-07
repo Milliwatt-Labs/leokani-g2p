@@ -5,7 +5,7 @@ English text to Kokoro-style phonemes, without espeak-ng.
 Leokani G2P is a small, fast English phonemizer from [Milliwatt Labs](https://milliwattlabs.com). It produces espeak compatible phoneme codes, made from the ground up: the same Kokoro/misaki-style codes
 Leokani-tts and Kokoro use. It contains no espeak-ng code or data files.
 
-It needs only `numpy` and `onnxruntime` and about 19 MB of model files, and takes under a millisecond per line on
+It needs only `numpy` and `onnxruntime` and about 10 MB of model files, and takes under a millisecond per line on
 one CPU thread. The code is MIT and the model files are CC BY 4.0, so you can use it in commercial products with
 attribution.
 
@@ -16,10 +16,10 @@ dˈɑktəɹ ˈɑkæfəɹ lˈændz æt sˈɛvən fˈɔɹɾi fˈIv ˌAˈɛm.
 
 ## Two sizes
 
-| variant | letter-to-sound params | files | |
-| --- | ---: | ---: | --- |
-| `micro` (default) | 2.22M | 19.0 MB | the same size as v1.0 |
-| `mini` | 2.94M | 21.8 MB | better on names and rare words |
+| variant | letter-to-sound params | files | with Brotli | |
+| --- | ---: | ---: | ---: | --- |
+| `micro` (default) | 2.22M | 10.2 MB | 4.9 MB | the smaller download |
+| `mini` | 2.94M | 10.8 MB | 6.0 MB | better on names and rare words |
 
 Both ship in the package; pick one with `variant="mini"` or `--variant mini`.
 
@@ -137,32 +137,36 @@ Try Leokani-tts in your browser: [Leokani-tts 7M on Hugging Face Spaces](https:/
 
 How often Leokani G2P reads test text held out from building the model the same as the reference (American
 English, Kokoro's codes). Sentence references are espeak-ng's output (commit 8269af04, through misaki 0.9.4's
-mapping); the letters and same-spelling rows use our own reference readings. Those last three tests are new in 1.2.
+mapping); the letters and same-spelling rows use our own reference readings. 1.2 and 1.3 were measured in the
+same run.
 
-| test | v1.0 | 1.2 micro (default) | 1.2 mini |
-| --- | ---: | ---: | ---: |
-| held-out sentences, five test sets (1,940), apart from text read differently on purpose | 99.28 % | 99.33 % | 99.33 % |
-| sentences built around unseen names (577) | 83.36 % | 91.33 % | 93.07 % |
-| more sentences with unseen names (600) | 70.5 % | 85.0 % | 87.5 % |
-| unseen rare words | 72.1 % | 80.1 % | 81.1 % |
-| numbers, units, web addresses, abbreviations (165) | — | 78.2 % | 78.2 % |
-| spelled-out letters and initialisms (148) | — | 88.5 % | 88.5 % |
-| words spelled the same but said differently (213) | — | 87.3 % | 87.3 % |
+| test | 1.2 micro | 1.3 micro (default) | 1.2 mini | 1.3 mini |
+| --- | ---: | ---: | ---: | ---: |
+| held-out sentences, five test sets (1,940), apart from text read differently on purpose | 99.38 % | 99.43 % | 99.38 % | 99.43 % |
+| sentences built around unseen names (577) | 91.33 % | 91.51 % | 93.07 % | 93.07 % |
+| more sentences with unseen names (600) | 85.0 % | 85.5 % | 87.5 % | 87.5 % |
+| unseen rare words (2,871) | 80.4 % | 80.7 % | 81.6 % | 81.6 % |
+| held-out word types (30,387) | 86.21 % | 86.21 % | 87.26 % | 87.30 % |
+| numbers, units, web addresses, abbreviations (165) | 78.2 % | 78.2 % | 78.2 % | 78.2 % |
+| spelled-out letters and initialisms (148) | 88.5 % | 88.5 % | 88.5 % | 88.5 % |
+| words spelled the same but said differently (213) | 87.3 % | 87.3 % | 87.3 % | 87.3 % |
 
 Rare words that aren't in the lexicon are the weak spot, which is why names score lower. Mini is the better
 choice for text full of names; on everyday sentences the two give the same output.
 
 ## Size and speed
 
-| file | params | size |
-| --- | ---: | ---: |
-| `context.onnx`: how each word is said in its clause | 1.34M | 5.4 MB |
-| `oov-encoder.onnx` + `oov-decoder.onnx`: letter-to-sound for words outside the lexicon | 2.22M | 9.0 MB |
-| `leokani-g2p.json.gz`: lexicon, weak forms, number words | | 4.7 MB |
-| `mini/`: the same four files for the mini variant | 2.94M + 1.34M | 21.8 MB |
+| file | params | size | with Brotli |
+| --- | ---: | ---: | ---: |
+| `context.onnx`: how each word is said in its clause | 1.34M | 1.4 MB | 0.93 MB |
+| `oov-encoder.onnx` + `oov-decoder.onnx`: letter-to-sound for words outside the lexicon | 2.22M | 2.4 MB | 1.73 MB |
+| `leokani-g2p.data`: weak forms, number words, the most common words | | 0.48 MB | 0.16 MB |
+| `leokani-g2p-words.data`: every other lexicon word | | 5.9 MB | 2.11 MB |
+| `mini/`: the same five files for the mini variant | 2.94M + 1.34M | 10.8 MB | 6.0 MB |
 
-On one CPU thread with the per-word cache warm: 0.26 ms per line on everyday sentences, about 0.6 ms on text full
-of numbers, units and abbreviations (Apple M3 Pro).
+On one CPU thread (NVIDIA GB10 Arm cores, 1,000 test sentences): 0.42 ms per line once each word has been seen
+(1.2: 0.38 ms) and 0.92 ms the first time (1.2: 0.40 ms), because a word the letter-to-sound model says is decoded
+on first use and then kept. Mini: 0.42 ms and 1.15 ms.
 
 ## Limits
 
@@ -187,7 +191,7 @@ pytest tests
 ## License
 
 - Code (the `leokani_g2p` package, its command-line tool, tests and examples): [MIT](LICENSE).
-- Model weights (`*.onnx`), the lexicon (`leokani-g2p.json.gz`) and `tests/goldens.json`:
+- Model weights (`*.onnx`), the lexicon (`leokani-g2p.data`, `leokani-g2p-words.data`) and `tests/goldens.json`:
   [CC BY 4.0](LICENSE-CC-BY-4.0.txt).
 
 Credit it as: **Leokani G2P by Milliwatt Labs (milliwattlabs.com)**. The lexicon's word list includes words

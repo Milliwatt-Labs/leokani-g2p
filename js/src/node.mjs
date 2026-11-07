@@ -4,11 +4,11 @@
 // It contains no espeak-ng code or data files.
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { create, FILES, VARIANTS, DEFAULT_VARIANT, variantPath } from './load.mjs';
+import { create, FILES, FIRST, VARIANTS, DEFAULT_VARIANT, variantPath } from './load.mjs';
 
 export { LeokaniG2P, FORMAT, VERSION, clean, chunks, pieces } from './g2p.mjs';
 export { UserLexicon, UserLexiconError, USER_FORMAT } from './userlex.mjs';
-export { FILES, VARIANTS, DEFAULT_VARIANT };
+export { FILES, FIRST, VARIANTS, DEFAULT_VARIANT };
 
 const MODELS = new URL('../models/', import.meta.url);
 
@@ -26,8 +26,9 @@ async function runtime(backend) {
 /**
  * Load the phonemizer. Options:
  *   variant    'micro' (default) or 'mini' (larger: better on names and rare words), from the package's models/
- *   modelDir   folder (path or file: URL) holding the four model files instead
- *   files      the files' bytes instead: { lexicon, encoder, decoder, context }
+ *   modelDir   folder (path or file: URL) holding the model files instead
+ *   files      the files' bytes instead: { lexicon, words, encoder, decoder, context }
+ *   lazy       true (default): read the tables and the context model now, the rest when a word first needs it
  *   userLexicon  custom pronunciations: a {format, words} document, a {word: value} object, or a .json/.tsv path
  *   backend    'wasm' (default: onnxruntime-web), 'onnxruntime-node' or 'auto' (onnxruntime-node when installed)
  *   threads    inference threads (default 1); ort: an onnxruntime module to use instead; sha256: false skips the check

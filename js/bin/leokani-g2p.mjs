@@ -16,7 +16,7 @@ English text to Kokoro-style phonemes. With no text, reads lines from stdin.
   --piece              treat each input as one clause with no punctuation
   --json               one JSON object per input line
   --user-lexicon FILE  custom pronunciations (.json or .tsv); may be repeated
-  --model DIR          folder with leokani-g2p.json.gz and the .onnx files
+  --model DIR          folder with the .data and .onnx files
   --threads N          inference threads (default 1)
   --version            print the version`;
 

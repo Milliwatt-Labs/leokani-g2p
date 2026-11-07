@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const NAMES = ['leokani-g2p.json.gz', 'oov-encoder.onnx', 'oov-decoder.onnx', 'context.onnx'];
+const NAMES = ['leokani-g2p.data', 'leokani-g2p-words.data', 'oov-encoder.onnx', 'oov-decoder.onnx', 'context.onnx'];
 const VARIANTS = { micro: '', mini: 'mini' };   // name -> subfolder, as in src/models.mjs
 const check = process.argv.includes('--check');
 const src = path.resolve(process.argv.slice(2).find((a) => !a.startsWith('--')) || path.join(root, '..', 'src', 'leokani_g2p'));

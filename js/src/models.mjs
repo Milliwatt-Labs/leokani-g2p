@@ -4,39 +4,47 @@ export const VARIANTS = {"micro":"","mini":"mini"};
 export const DEFAULT_VARIANT = 'micro';
 export const MODEL_FILES = {
   "micro": {
-    "leokani-g2p.json.gz": {
-      "bytes": 4656918,
-      "sha256": "2d0da7653feb2f7174ecc313b5e30dea3c0e2fb6e58f9255816c7e06e9c9c962"
+    "leokani-g2p.data": {
+      "bytes": 484864,
+      "sha256": "b25d3baf82efc5da668b47bf34a86e7900378b2236d56bcf75cfd4a167d61a1b"
+    },
+    "leokani-g2p-words.data": {
+      "bytes": 5869239,
+      "sha256": "fa88a96b7e42c61b8e7b9acaf9787e8537d3d1e8dd4e06764e05e75537fc2aa2"
     },
     "oov-encoder.onnx": {
-      "bytes": 3868129,
-      "sha256": "5ffcb175371b369ca0f4a28d39e8d8a75abab796b46e63ed7d0a311cacf89307"
+      "bytes": 1029977,
+      "sha256": "4a91d053c5cba5b910bc8aa4c1301e2db4dd33f47b9e3841df9e4596efb7ef3a"
     },
     "oov-decoder.onnx": {
-      "bytes": 5105543,
-      "sha256": "c188e599976bb820209b1dd8747a8e3278aa7aa372e73ab5367809e406f25088"
+      "bytes": 1377428,
+      "sha256": "fe951d01dc9f2b8e1e3a6bba224ba74ea256713029c8512a02c4192ca503619e"
     },
     "context.onnx": {
-      "bytes": 5371378,
-      "sha256": "283f1122bbcb8cc577c568d2b52e1a2e205c286cae528f0b7b9e3b9492c91409"
+      "bytes": 1432882,
+      "sha256": "b525b8e290004d33f5996c4954bcf289654806133b32289b7842c49da5ac1d20"
     }
   },
   "mini": {
-    "leokani-g2p.json.gz": {
-      "bytes": 4567474,
-      "sha256": "ad3fe089e709acaac276fdc7fe0a18041cfc28d6633b51f8e6bab6dbbcf0d733"
+    "leokani-g2p.data": {
+      "bytes": 484729,
+      "sha256": "d27775335b05bccb67bfc8fd905e90acaa985a25deffa969d5361762d6f57536"
+    },
+    "leokani-g2p-words.data": {
+      "bytes": 5651193,
+      "sha256": "2c62d8d9758954af58e799c2845d7906a7cbeb24e95e702b39f199c86b8c1ba6"
     },
     "oov-encoder.onnx": {
-      "bytes": 5114420,
-      "sha256": "0a44b762b29dca3d9b8150b2f70076fae0d51a09ccdbb4ddc4ef032aec0829bc"
+      "bytes": 1361382,
+      "sha256": "cb3d78b31912a95a871fb19c9371e3350fb7f2a7ee13038a3c990ddc669e9172"
     },
     "oov-decoder.onnx": {
-      "bytes": 6773509,
-      "sha256": "2564e89e9aadbd3932d9e4fe1d3652a6dfa0f68dc84e10d88504f2c4a9d1733a"
+      "bytes": 1826504,
+      "sha256": "11a08d5e31c2abb4335fd3bc2531a277b7652afe37b6ecb61f579aca68778565"
     },
     "context.onnx": {
-      "bytes": 5371378,
-      "sha256": "283f1122bbcb8cc577c568d2b52e1a2e205c286cae528f0b7b9e3b9492c91409"
+      "bytes": 1432882,
+      "sha256": "b525b8e290004d33f5996c4954bcf289654806133b32289b7842c49da5ac1d20"
     }
   }
 };

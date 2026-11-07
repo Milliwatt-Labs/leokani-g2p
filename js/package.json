@@ -1,6 +1,6 @@
 {
   "name": "leokani-g2p",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "English text to espeak compatible phoneme codes, in browsers and Node. Made from the ground up; contains no espeak-ng code or data files.",
   "type": "module",
   "license": "MIT AND CC-BY-4.0",

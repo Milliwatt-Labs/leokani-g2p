@@ -126,7 +126,7 @@
   {
    "piece": "This story is also published at BeforeItsNews",
    "normalized": "This story is also published at BeforeItsNews",
-   "leokani": "ðɪs stˈɔɹi ɪz ˈɔlsO pˈʌblɪʃt æt bᵻfˈɔɹəts nˈuz"
+   "leokani": "ðɪs stˈɔɹi ɪz ˈɔlsO pˈʌblɪʃt æt bᵻfˈɔɹət nˈuz nˈuz"
   },
   {
    "piece": "Having plants around makes a place feel much more colourful",
@@ -181,7 +181,7 @@
   {
    "piece": "She grew up near Tyagadurgam",
    "normalized": "She grew up near Tyagadurgam",
-   "leokani": "ʃi ɡɹˈu ˌʌp nˌɪɹ tˈIəɡˌæʤəɹɡˌæm"
+   "leokani": "ʃi ɡɹˈu ˌʌp nˌɪɹ tˈIəɡˌæʤəʤˌæm"
   },
   {
    "piece": "Midnight Clockmaker",
@@ -3708,7 +3708,7 @@
    "id": "line-0285",
    "text": "The FAQ update is due next week.",
    "normalized": "The FAQ update is due next week.",
-   "leokani": "ðɪ fˈæk ˈʌpdAt ɪz dˈu nˈɛkst wˈik."
+   "leokani": "ðɪ ˌɛfˌAkjˈu ˈʌpdAt ɪz dˈu nˈɛkst wˈik."
   },
   {
    "id": "line-0286",
@@ -9854,7 +9854,7 @@
    "id": "n-range-52",
    "text": "The 1920s-30s were boom years.",
    "normalized": "The 1920s-30s were boom years.",
-   "leokani": "ðə nˈIntinhˈʌndɹɪd twˈɛnti z  θˈɜɹɾi z wɜɹ bˈum jˈɪɹz."
+   "leokani": "ðə nˈIntinhˈʌndɹɪd twˈɛnti z  θˈɜɹɾi zwɜɹ bˈum jˈɪɹz."
   },
   {
    "id": "n-range-54",
@@ -10310,7 +10310,7 @@
    "id": "n-web-47",
    "text": "Visit WWW.BESTBUY.COM for deals.",
    "normalized": "Visit WWW.BESTBUY.COM for deals.",
-   "leokani": "vˈɪzɪt dˌʌbᵊljˌudˌʌbᵊljˌudˌʌbᵊljˌuˈɑɹdˌuˌudˌuˌʌbᵊljˌu d fɔɹ dˈilz."
+   "leokani": "vˈɪzɪt dˌʌbᵊljˌudˌʌbᵊljˌudˌʌbᵊljˌuˈɑɹdˌuˌudˌuˌʌbᵊljˌuˌu fɔɹ dˈilz."
   },
   {
    "id": "n-web-49",
@@ -10604,7 +10604,7 @@
    "id": "l-spaced-01",
    "text": "Spell it A G C for me.",
    "normalized": "Spell it AˈA G C for me.",
-   "leokani": "spˈɛl ɪɾ A ʤˈi sˈi fɔɹ mˌi."
+   "leokani": "spˈɛl ɪɾ ˈA ʤˈi sˈi fɔɹ mˌi."
   },
   {
    "id": "l-spaced-03",

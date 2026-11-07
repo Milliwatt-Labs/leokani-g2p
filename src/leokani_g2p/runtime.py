@@ -16,8 +16,8 @@ codes Leokani-tts and Kokoro use. It contains no espeak-ng code or data files.
     g2p.phonemize_chunks("A long paragraph. Of text.")      # -> one phoneme string per clause chunk
 
 How it works, per piece:
-  1. Each word gets a base pronunciation: the lexicon (leokani-g2p.json), else the number reader for digits, else
-     the letter-to-sound model (oov-encoder.onnx + oov-decoder.onnx, greedy).
+  1. Each word gets a base pronunciation: the lexicon (leokani-g2p.data and leokani-g2p-words.data), else the number
+     reader for digits, else the letter-to-sound model (oov-encoder.onnx + oov-decoder.onnx, greedy).
   2. The context model (context.onnx) looks at the whole piece and picks, per word, how the base is said here
      (a stress change or a weak form such as "to" -> tə), the word edge (a flap, a linking ɹ), and whether the
      word is written together with the next one ("in the" -> ɪnðə).
@@ -38,6 +38,11 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FORMAT = "leokani-g2p/1"
+# Model files. 1.3: leokani-g2p.data holds the tables and the common words, leokani-g2p-words.data the other words
+# (read on first use). 1.0-1.2 had one leokani-g2p.json.gz; both layouts load.
+DATA_FILE, WORDS_FILE, JSON_FILE = "leokani-g2p.data", "leokani-g2p-words.data", "leokani-g2p.json.gz"
+ONNX_FILES = {"enc": "oov-encoder.onnx", "dec": "oov-decoder.onnx", "ctx": "context.onnx"}
+DATA_MAGIC = b"LKG2P13\x01"
 # Model variants by name: the folder relative to the release folder. micro (2.2 M letter-to-sound parameters) is
 # the default and sits at the top; mini (2.9 M, better on unknown words and names) is in mini/.
 VARIANTS = {"micro": "", "mini": "mini"}
@@ -2703,19 +2708,132 @@ def split_long(w: str) -> list[str]:
     return [w[a:b] for a, b in zip([0] + cuts, cuts + [len(w)]) if w[a:b]]
 
 
+# ---------------------------------------------------------------- the lexicon files (1.3)
+#
+# A .data file: DATA_MAGIC, u32 n + n bytes of JSON (the tables; {} in the words file), then one word section:
+#   u32 count, u32 block, u32 len + the words, u32 len + the phonemes                            (little-endian)
+# Words are sorted by their UTF-8 bytes and front-coded, each ended by a newline (0x0A): every block-th word is
+# written whole, the others as one byte (how many leading bytes it shares with the word before) + the rest.
+# Phonemes, one run per word in the same order: the word's symbols (one byte each, an index into the tables'
+# "lexiconSymbols") ended by 0xFF, or the single byte 0xFE: in the lexicon and said as the letter-to-sound model
+# says it.
+
+
+def read_data(path: str) -> tuple[dict, dict[str, str | None]]:
+    """A .data file -> (its tables, {word: phonemes, or None for a word the letter-to-sound model says})."""
+    with open(path, "rb") as f:
+        b = f.read()
+    if b[:8] != DATA_MAGIC:
+        raise SystemExit(f"{path}: not a Leokani G2P 1.3 data file")
+    u32 = lambda i: int.from_bytes(b[i:i + 4], "little")  # noqa: E731
+    n = u32(8)
+    doc = json.loads(b[12:12 + n].decode("utf-8"))
+    i = 12 + n
+    count, block = u32(i), u32(i + 4)
+    i += 8
+    parts = []
+    for _ in range(2):
+        m = u32(i)
+        parts.append(b[i + 4:i + 4 + m])
+        i += 4 + m
+    words, phon = parts
+    syms = (doc.get("lexiconSymbols") or symbols_of(path))
+    out: dict[str, str | None] = {}
+    wi = pi = 0
+    prev = b""
+    for k in range(count):
+        if k % block == 0:
+            p = 0
+        else:
+            p = words[wi]
+            wi += 1
+        e = words.index(10, wi)
+        w = prev[:p] + words[wi:e]
+        wi = e + 1
+        prev = w
+        if phon[pi] == 0xFE:
+            out[w.decode("utf-8")] = None
+            pi += 1
+        else:
+            e = phon.index(0xFF, pi)
+            out[w.decode("utf-8")] = "".join(syms[c] for c in phon[pi:e])
+            pi = e + 1
+    return doc, out
+
+
+def symbols_of(words_path: str) -> list[str]:
+    """The words file has no tables of its own: its symbols are leokani-g2p.data's beside it."""
+    with open(os.path.join(os.path.dirname(words_path), DATA_FILE), "rb") as f:
+        b = f.read()
+    n = int.from_bytes(b[8:12], "little")
+    return json.loads(b[12:12 + n].decode("utf-8"))["lexiconSymbols"]
+
+
+class Lexicon:
+    """The lexicon: word (lowercase, or as written for the few kept with their case) -> phonemes. A value of None
+    means the word is in the lexicon and said as the letter-to-sound model says it (1.3 keeps only the words the
+    model gets wrong, plus the common words). The common words come with the tables; the other words file is read
+    on the first look-up of a word that is not a common one."""
+
+    def __init__(self, common: dict[str, str | None], words_path: str | None = None, rest=None):
+        self.common = common
+        self.words_path = words_path
+        self._rest = rest
+
+    @property
+    def rest(self) -> dict[str, str | None]:
+        if self._rest is None:
+            self._rest = read_data(self.words_path)[1] if self.words_path else {}
+        return self._rest
+
+    @property
+    def loaded(self) -> bool:
+        return self._rest is not None
+
+    def __contains__(self, w) -> bool:
+        return w in self.common or w in self.rest
+
+    def get(self, w, default=None):
+        if w in self.common:
+            return self.common[w]
+        return self.rest.get(w, default)
+
+    def __getitem__(self, w):
+        if w in self.common:
+            return self.common[w]
+        return self.rest[w]
+
+    def __len__(self) -> int:
+        return len(self.common) + len(self.rest)
+
+    def __iter__(self):
+        yield from self.common
+        yield from self.rest
+
+
 class LeokaniG2P:
-    def __init__(self, directory: str = HERE, threads: int = 1, user_lexicon=None, variant: str | None = None):
+    def __init__(self, directory: str = HERE, threads: int = 1, user_lexicon=None, variant: str | None = None,
+                 lazy: bool = False):
         """user_lexicon: custom pronunciations, a path (.json or .tsv), a dict or a UserLexicon (see UserLexicon).
-        variant: "micro" (default) or "mini", looked up under directory (see VARIANTS)."""
-        import onnxruntime as ort
+        variant: "micro" (default) or "mini", looked up under directory (see VARIANTS).
+        lazy: read the other-words file and start each model only when a piece first needs it (default: now)."""
         directory = variant_dir(directory, variant)
+        self.directory = directory
         self.variant = variant or DEFAULT_VARIANT
-        path = os.path.join(directory, "leokani-g2p.json.gz")
-        with gzip.open(path, "rt", encoding="utf-8") as f:
-            self.doc = json.load(f)
+        self.threads = threads
+        path = os.path.join(directory, DATA_FILE)
+        if os.path.exists(path):
+            self.doc, common = read_data(path)
+            self.lexicon = Lexicon(common, os.path.join(directory, WORDS_FILE))
+            if not lazy:
+                self.lexicon.rest
+        else:
+            path = os.path.join(directory, JSON_FILE)
+            with gzip.open(path, "rt", encoding="utf-8") as f:
+                self.doc = json.load(f)
+            self.lexicon = Lexicon(self.doc["lexicon"], None, {})
         if self.doc.get("format") != FORMAT:
             raise SystemExit(f"{path}: not a {FORMAT} file")
-        self.lexicon: dict[str, str] = self.doc["lexicon"]
         self.cased: dict[str, str] = self.doc["cased"]
         self.variants: dict[str, list[str]] = self.doc["variants"]
         self.word_ids = {w: i + 2 for i, w in enumerate(self.doc["contextWords"])}
@@ -2729,15 +2847,11 @@ class LeokaniG2P:
         letters["s"] = "ˈɛs"                                 # the atom is the plural suffix ("80s")
         self.normalizer = Normalizer(lambda w: w in self.lexicon, letters, lambda w: w in self.cased,
                                      lambda w: w in self.word_ids,
-                                     lambda w: ([self.lexicon[w]] if w in self.lexicon else []) + self.variants.get(w, []))
-        opts = ort.SessionOptions()
-        opts.intra_op_num_threads = threads
-        opts.inter_op_num_threads = 1
-        sess = lambda n: ort.InferenceSession(os.path.join(directory, n), opts,  # noqa: E731
-                                              providers=["CPUExecutionProvider"])
-        self.enc = sess("oov-encoder.onnx")
-        self.dec = sess("oov-decoder.onnx")
-        self.ctx = sess("context.onnx")
+                                     lambda w: ([self._lex(w)] if w in self.lexicon else []) + self.variants.get(w, []))
+        self._sessions: dict = {}
+        if not lazy:
+            for k in ONNX_FILES:
+                self._session(k)
         self.max_out = int(self.doc["oov"]["maxOut"])
         self.cache: dict[str, str] = {}
         self.user_lexicon = UserLexicon(symbols=set(self.out_syms) | {PRIMARY, SECONDARY})
@@ -2747,6 +2861,25 @@ class LeokaniG2P:
                 self.load_user_lexicon(os.fspath(user_lexicon))
             else:
                 self.user_lexicon.update(user_lexicon)
+
+    # ---- the three models, started on first use when lazy
+    def _session(self, key: str):
+        if key not in self._sessions:
+            import onnxruntime as ort
+            opts = ort.SessionOptions()
+            opts.intra_op_num_threads = self.threads
+            opts.inter_op_num_threads = 1
+            self._sessions[key] = ort.InferenceSession(os.path.join(self.directory, ONNX_FILES[key]), opts,
+                                                       providers=["CPUExecutionProvider"])
+        return self._sessions[key]
+
+    enc = property(lambda self: self._session("enc"))
+    dec = property(lambda self: self._session("dec"))
+    ctx = property(lambda self: self._session("ctx"))
+
+    def loaded(self) -> list[str]:
+        """Which parts are in memory: "words" (the other-words file) and the models ("enc", "dec", "ctx")."""
+        return (["words"] if self.lexicon.loaded else []) + [k for k in ONNX_FILES if k in self._sessions]
 
     # ---- custom pronunciations
     def add_pronunciation(self, word: str, value=None, *, phonemes: str | None = None, say: str | None = None):
@@ -2758,8 +2891,13 @@ class LeokaniG2P:
         self.user_lexicon.load(path)
 
     # ---- bases
+    def _lex(self, lw: str) -> str:
+        """The lexicon's phonemes for lowercase word lw (which it has)."""
+        v = self.lexicon[lw]
+        return self.oov([lw])[0] if v is None else v
+
     def _word(self, w: str) -> str | None:
-        return self.cased.get(w) or self.lexicon.get(w.lower())
+        return self.cased.get(w) or (self._lex(w.lower()) if w.lower() in self.lexicon else None)
 
     def normalize(self, text: str, pauses: bool = True) -> str:
         """A line as a person reads it (see Normalizer); leokani.py calls this before cutting the line up."""
@@ -2772,7 +2910,7 @@ class LeokaniG2P:
             return self.cased[w], "lexicon"
         lw = w.lower()
         if lw in self.lexicon:
-            return self.lexicon[lw], "lexicon"
+            return self._lex(lw), "lexicon"
         if any(c.isdigit() for c in w):
             said = self.numbers.say(w)
             if said is not None:
@@ -2835,7 +2973,7 @@ class LeokaniG2P:
         words = [w for w in self.normalize(piece, pauses=False).split(" ") if w]
         if not words:
             return "", [], [], []
-        oov = [w for w in words if self._needs_oov(w)]
+        oov = [w for w in words if self._needs_oov(w)] + [x for x in map(self._derived, words) if x]
         if oov:
             self.oov(sorted(set(oov)))
         bs = [self.base(w) for w in words]
@@ -2855,6 +2993,15 @@ class LeokaniG2P:
                 forms.append(pick(form[0, i], candidates(b, self.variants.get(w.lower(), []))) or b)
         joins = [bool(join[0, i].argmax()) for i in range(len(words))]
         return assemble(forms, joins), forms, joins, srcs
+
+    def _derived(self, w: str) -> str | None:
+        """The lowercase key, when w's base is a lexicon word the letter-to-sound model says (batched with the rest)."""
+        if PH in w or w in self.cased:
+            return None
+        if w.endswith(".") and w.rstrip(".") and "." not in w.rstrip("."):
+            w = w.rstrip(".")
+        lw = w.lower()
+        return lw if lw in self.lexicon and self.lexicon[lw] is None and lw not in self.cache else None
 
     def _needs_oov(self, w: str) -> bool:
         if w.endswith(".") and w.rstrip(".") and "." not in w.rstrip("."):
@@ -3051,7 +3198,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Leokani G2P: English to Kokoro-style phonemes.")
     ap.add_argument("piece", nargs="?", help="one clause (no punctuation); default: read lines from stdin")
     ap.add_argument("--text", help="a whole line, split into clauses as leokani.py does")
-    ap.add_argument("--model", default=HERE, help="directory with leokani-g2p.json.gz and the .onnx files")
+    ap.add_argument("--model", default=HERE, help="directory with the lexicon (.data) and the .onnx files")
     ap.add_argument("--variant", choices=list(VARIANTS), default=DEFAULT_VARIANT, help="model size (default micro)")
     ap.add_argument("--lexicon", action="append", default=[], help="custom pronunciations (.json or .tsv)")
     a = ap.parse_args(argv)

@@ -23,7 +23,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--chunks", action="store_true", help="one clause chunk per output line")
     ap.add_argument("--piece", action="store_true", help="treat each input as one clause with no punctuation")
     ap.add_argument("--json", action="store_true", help="one JSON object per input line")
-    ap.add_argument("--model", default=HERE, help="folder with leokani-g2p.json.gz and the .onnx files")
+    ap.add_argument("--model", default=HERE, help="folder with the .data and .onnx files")
     ap.add_argument("--variant", choices=list(VARIANTS), default=DEFAULT_VARIANT, help="model size (default micro)")
     ap.add_argument("--lexicon", action="append", default=[], metavar="FILE",
                     help="custom pronunciations, .json or .tsv (repeatable)")

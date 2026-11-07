@@ -3,19 +3,20 @@
 // It produces espeak compatible phoneme codes, made from the ground up.
 // It contains no espeak-ng code or data files.
 import * as ortWeb from 'onnxruntime-web/wasm';
-import { create, FILES, VARIANTS, DEFAULT_VARIANT, variantPath } from './load.mjs';
+import { create, FILES, FIRST, VARIANTS, DEFAULT_VARIANT, variantPath } from './load.mjs';
 
 export { LeokaniG2P, FORMAT, VERSION, clean, chunks, pieces } from './g2p.mjs';
 export { UserLexicon, UserLexiconError, USER_FORMAT } from './userlex.mjs';
-export { FILES, VARIANTS, DEFAULT_VARIANT };
+export { FILES, FIRST, VARIANTS, DEFAULT_VARIANT };
 
 const MODELS = new URL('../models/', import.meta.url);
 
 /**
  * Load the phonemizer. Options:
  *   variant    'micro' (default) or 'mini' (larger: better on names and rare words)
- *   modelBase  folder (URL) holding the four model files; default: the package's models/ folder (mini: models/mini/)
- *   files      the files' bytes instead: { lexicon, encoder, decoder, context }
+ *   modelBase  folder (URL) holding the model files; default: the package's models/ folder (mini: models/mini/)
+ *   files      the files' bytes instead: { lexicon, words, encoder, decoder, context }
+ *   lazy       true (default): read the tables and the context model now, the rest when a word first needs it
  *   userLexicon  custom pronunciations: a {format, words} document or a {word: value} object
  *   threads    onnxruntime wasm threads (default 1)
  *   wasmPaths  where onnxruntime-web's .wasm lives, if your bundler doesn't copy it

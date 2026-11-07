@@ -3,7 +3,9 @@
 export declare const FORMAT: 'leokani-g2p/1';
 export declare const VERSION: string;
 export declare const USER_FORMAT: 'leokani-g2p-user/1';
-export declare const FILES: { lexicon: string; encoder: string; decoder: string; context: string };
+export declare const FILES: { lexicon: string; words: string; encoder: string; decoder: string; context: string };
+/** The files a first sentence needs (the rest load when a word first needs them). */
+export declare const FIRST: Array<keyof typeof FILES>;
 
 /** A custom pronunciation: "/phonemes/" or a respelling, or an object naming the kind. */
 export type Pronunciation = string | { phonemes: string } | { say: string };
@@ -61,8 +63,19 @@ export declare class LeokaniG2P {
   /** One clause with no punctuation -> phonemes. */
   piece(piece: string): Promise<string>;
   pieceWords(piece: string): Promise<PieceWords>;
-  /** A line as a person reads it: numbers, money, dates, abbreviations, ... written out. */
+  /** The files read so far, in order (lazy loading adds to it). */
+  readonly fetched: Array<keyof typeof FILES>;
+  /** A line as a person reads it: numbers, money, dates, abbreviations, ... written out. Synchronous, so it throws
+   *  when the line needs something not read yet: the other-words file (lazy loading; NeedWords), or how the
+   *  letter-to-sound model says an all-caps word it hasn't said yet ("NBA", "GPU"; NeedOov). normalizeAsync never
+   *  does; after it (or phonemize) has read a line, normalize gives the same result for it. */
   normalize(text: string, pauses?: boolean): string;
+  /** normalize, reading what the line needs first (the other-words file, the letter-to-sound model). */
+  normalizeAsync(text: string, pauses?: boolean): Promise<string>;
+  /** Which parts are in memory: 'words' and the models 'encoder', 'decoder', 'context'. */
+  loaded(): Array<'words' | 'encoder' | 'decoder' | 'context'>;
+  /** Read every part now. */
+  loadAll(): Promise<this>;
   addPronunciation(word: string, value: Pronunciation): this;
   removePronunciation(word: string): boolean;
   /** A document or object, or JSON / TSV text. */
@@ -77,12 +90,15 @@ export declare const DEFAULT_VARIANT: Variant;
 export interface LoadOptions {
   /** 'micro' (default, 2.2M letter-to-sound parameters) or 'mini' (2.9M: better on names and rare words). */
   variant?: Variant;
-  /** Browsers: the folder (URL) holding the four model files. Default: the package's models/ folder. */
+  /** Browsers: the folder (URL) holding the model files. Default: the package's models/ folder. */
   modelBase?: string | URL;
-  /** Node: the folder (path or file: URL) holding the four model files. */
+  /** Node: the folder (path or file: URL) holding the model files. */
   modelDir?: string | URL;
   /** The files' bytes instead of reading them. */
-  files?: Partial<Record<'lexicon' | 'encoder' | 'decoder' | 'context', ArrayBuffer | Uint8Array>>;
+  files?: Partial<Record<keyof typeof FILES, ArrayBuffer | Uint8Array>>;
+  /** true (default): read the tables and the context model now, the other-words file on the first word that is
+   *  not a common one and the letter-to-sound models on the first unknown word. false: read everything now. */
+  lazy?: boolean;
   /** Custom pronunciations; in Node also a .json or .tsv path. */
   userLexicon?: UserLexicon | UserLexiconDocument | Record<string, Pronunciation> | string;
   /** Inference threads (default 1). */
